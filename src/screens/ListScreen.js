@@ -1,8 +1,11 @@
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+
 import { getEvents } from "../services/eventService";
 
-export default function ListScreen({ navigation }) {
+export default function ListScreen() {
+  const router = useRouter();
   const [events, setEvents] = useState([]);
 
   useEffect(() => {
@@ -18,7 +21,10 @@ export default function ListScreen({ navigation }) {
           <Pressable
             style={styles.card}
             onPress={() =>
-              navigation.navigate("EventDetail", { eventId: item.id })
+              router.push({
+                pathname: "/event/[id]",
+                params: { id: item.id },
+              })
             }
           >
             <Text style={styles.title}>{item.title}</Text>

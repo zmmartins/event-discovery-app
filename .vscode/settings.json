@@ -3,7 +3,7 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit",
-    "editor.formatOnSave": true,
+    "editor.formatOnSave": "explicit",
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   }
 }
