@@ -767,4 +767,183 @@ src/screens/EventDetailScreen.js
 
 Purpose:
 
-- Cultural passport
+- Cultural passport.
+- Shows joined/planned events
+- Shows mock past events.
+- May include hidden debug access to logs.
+
+Route:
+
+```
+/profile
+```
+
+File:
+
+```
+app/profile.tsx
+```
+
+Screen:
+
+```
+src/screens/ProfileScreen.js
+```
+
+---
+
+## Planned Components
+
+### EventCard
+
+Used in:
+
+- List screen
+- Discover Suggestions
+- Profile joined events
+
+Responsibilities:
+
+- Display event title, category, location, date/time, price, popularity.
+- Trigger `onPress`.
+- Avoid fetching data internally.
+
+---
+
+### EventPin
+
+Used in:
+
+- Map screen
+
+Responsibilities:
+
+- Display location marker.
+- Show popularity visually
+- Support selected/expanded state.
+- Trigger `onPress`.
+
+---
+
+### BottomNav
+
+Used in:
+
+- Main screens
+
+Responsibilities:
+
+- Navigate between map, list, profile.
+- Indicate active route.
+- Use Expo Router Navigation
+
+---
+
+### CategoryFilter
+
+Used in:
+
+- List screen
+- Map screen
+
+Responsibilities:
+
+- Show available categories.
+- Trigger selected category changes
+- Log `filter_changed`.
+
+---
+
+## What not to implement yet
+
+Do not implement these for the academic prototype unless all core flows are already finished:
+
+- Real authentication.
+- Real backend
+- Real event publishing
+- Payments
+- Ticket purchasing.
+- Chat/messaging
+- Push notifications
+- Complex social feed
+- Real image uploads
+- Advanced recommendation algorithm
+
+These can be listed as future work in the report.
+
+---
+
+## Future Work
+
+Possible post-delivery improvements:
+
+- Supabase backend
+- User authentication
+- Organizer accounts
+- Real event creation
+- Event image uploads
+- Friend system
+- Cultural passport with real attendance history
+- Photo posting tied to event location
+- Event recommendations based on user behaviour.
+- Real-time event popularity
+- Push notifications
+- Web admin dashboard for organizers
+
+---
+
+## Academic Report Notes
+
+The implementation should support collecting evidence for the final report:
+
+- Screenshots of each screen
+- Description of changes from previous prototypes.
+- Explanation of simplified features
+- Usability testing task list
+- Interaction logs
+- Descriptive statistics
+- Photos of tests with permission
+- Link to GitHub repository
+
+Recommended usability test tasks:
+
+1. Find an event through the list
+2. Open an event detail page
+3. Mark participation in an event
+4. Find the event in the profile
+5. Explore events through the map
+6. Use Shake to Discover
+
+Recommended quantitative metrics:
+
+- Time to find an event
+- Time to open event details
+- Time to mark participants
+- Number of events opened
+- Number of shakes performed
+- Number of filters used
+- Number of navigation actions
+- Task completion rate
+- Error count.
+
+---
+
+## Development Philosophy
+
+This is a one-week academic functional prototype with future real-world potential.
+
+Therefore:
+
+Build the core experience first.
+Keep the architecture clean enough to grow.
+Avoid premature backend complexity.
+Prioritize working mobile interactions.
+Log usability data from the beginning.
+
+Minimum successful prototype:
+
+List -> Detail -> Participate -> Haptic Feedback -> Log -> Profile
+
+Map -> Pin -> Detail
+
+Shake -> Discover Mode -> Suggested events -> Log

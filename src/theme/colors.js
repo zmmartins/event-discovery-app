@@ -4,6 +4,7 @@ export const colors = {
   surface: "#FFFFFF",
   text: "#111111",
   mutedText: "#666666",
+  iconMuted: "#A6A6A6",
   border: "#E5E5E5",
   discover: "#D946EF",
 };
