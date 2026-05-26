@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { usePathname, useRouter } from "expo-router";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { colors } from "../theme/colors";
 
@@ -17,26 +18,70 @@ const topItems = [
     accessibilityLabel: "Open map",
   },
   {
-    route: "/list",
+    route: "/map/list",
     icon: "menu",
     accessibilityLabel: "Open event list",
   },
   {
-    route: "/shake-discover",
+    route: "/map/shake-discover",
     icon: "flash",
     accessibilityLabel: "Open shake to discover",
   },
   {
-    route: "/notifications",
+    route: "/map/notifications",
     icon: "notifications",
     accessibilityLabel: "Open notifications",
     standalone: true,
   },
 ];
 
+function getLiquidGlassAvailable() {
+  if (Platform.OS !== "ios") return false;
+
+  try {
+    return isLiquidGlassAvailable();
+  } catch {
+    return false;
+  }
+}
+
+const liquidGlassAvailable = getLiquidGlassAvailable();
+const glassColorScheme = "light";
+const lightGlassTintColor = "rgba(255, 255, 255, 0.34)";
+
 function normalizePathname(pathname) {
   if (!pathname || pathname === "/") return "/";
   return pathname.replace(/\/$/, "");
+}
+
+function GlassSurface({ children, style }) {
+  const surfaceStyle = [
+    styles.glassSurface,
+    Platform.select({
+      android: styles.androidGlassFallback,
+      ios: liquidGlassAvailable
+        ? styles.iosLiquidGlassSurface
+        : styles.iosGlassFallback,
+      default: styles.defaultGlassFallback,
+    }),
+    style,
+  ];
+
+  if (Platform.OS === "ios" && liquidGlassAvailable) {
+    return (
+      <GlassView
+        colorScheme={glassColorScheme}
+        glassEffectStyle="regular"
+        isInteractive={false}
+        style={surfaceStyle}
+        tintColor={lightGlassTintColor}
+      >
+        {children}
+      </GlassView>
+    );
+  }
+
+  return <View style={surfaceStyle}>{children}</View>;
 }
 
 function TopNavButton({ item }) {
@@ -50,7 +95,7 @@ function TopNavButton({ item }) {
     router.replace(item.route);
   }
 
-  return (
+  const button = (
     <Pressable
       accessibilityLabel={item.accessibilityLabel}
       accessibilityRole="button"
@@ -70,6 +115,14 @@ function TopNavButton({ item }) {
       />
     </Pressable>
   );
+
+  if (item.standalone) {
+    return (
+      <GlassSurface style={styles.standaloneSurface}>{button}</GlassSurface>
+    );
+  }
+
+  return button;
 }
 
 export default function TopNav() {
@@ -81,11 +134,11 @@ export default function TopNav() {
         <TopNavButton item={filters} />
       </View>
 
-      <View style={styles.centerGroup}>
+      <GlassSurface style={styles.centerGroup}>
         <TopNavButton item={map} />
         <TopNavButton item={list} />
         <TopNavButton item={discover} />
-      </View>
+      </GlassSurface>
 
       <View style={styles.sideZone}>
         <TopNavButton item={notifications} />
@@ -106,19 +159,35 @@ const styles = StyleSheet.create({
   },
   centerGroup: {
     alignItems: "center",
-    backgroundColor: colors.surface,
     borderRadius: 22,
-    elevation: 6,
     flexDirection: "row",
     minHeight: 44,
     paddingHorizontal: 6,
+  },
+  glassSurface: {
+    borderColor: "rgba(255, 255, 255, 0.46)",
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
     shadowColor: "#000000",
     shadowOffset: {
       width: 0,
       height: 6,
     },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.08,
     shadowRadius: 14,
+  },
+  iosLiquidGlassSurface: {
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+  },
+  iosGlassFallback: {
+    backgroundColor: "rgba(255, 255, 255, 0.24)",
+  },
+  androidGlassFallback: {
+    backgroundColor: colors.surface,
+    elevation: 6,
+  },
+  defaultGlassFallback: {
+    backgroundColor: "rgba(255, 255, 255, 0.82)",
   },
   iconButton: {
     alignItems: "center",
@@ -127,18 +196,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 36,
   },
-  standaloneButton: {
-    backgroundColor: colors.surface,
+  standaloneSurface: {
     borderRadius: 22,
-    elevation: 6,
     height: 44,
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
+    width: 44,
+  },
+  standaloneButton: {
+    borderRadius: 22,
+    height: 44,
     width: 44,
   },
   activeButton: {

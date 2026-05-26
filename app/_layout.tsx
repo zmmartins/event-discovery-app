@@ -4,7 +4,7 @@ export default function RootLayout() {
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="event/[id]" options={{ title: "Event Details" }} />
+      <Stack.Screen name="event/[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }

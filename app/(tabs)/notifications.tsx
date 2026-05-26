@@ -1,3 +1,5 @@
-import NotificationsScreen from "../../src/screens/NotificationsScreen";
+import { Redirect } from "expo-router";
 
-export default NotificationsScreen;
+export default function NotificationsRedirect() {
+  return <Redirect href="/map/notifications" />;
+}

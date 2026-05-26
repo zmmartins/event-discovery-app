@@ -1,3 +1,5 @@
-import ListScreen from "../../src/screens/ListScreen";
+import { Redirect } from "expo-router";
 
-export default ListScreen;
+export default function ListRedirect() {
+  return <Redirect href="/map/list" />;
+}

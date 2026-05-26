@@ -1,3 +1,5 @@
-import ShakeDiscoverScreen from "../../src/screens/ShakeDiscoverScreen";
+import { Redirect } from "expo-router";
 
-export default ShakeDiscoverScreen;
+export default function ShakeDiscoverRedirect() {
+  return <Redirect href="/map/shake-discover" />;
+}
