@@ -2,6 +2,8 @@ import { CURRENT_USER_ID, mockUsers } from "../data/mockUsers";
 
 let users = mockUsers.map((user) => ({
   ...user,
+  attendedExperienceIds: [...(user.attendedExperienceIds ?? [])],
+  friendIds: [...(user.friendIds ?? [])],
   participatingEventIds: [...(user.participatingEventIds ?? [])],
   savedEventIds: [...(user.savedEventIds ?? [])],
 }));
@@ -9,6 +11,8 @@ let users = mockUsers.map((user) => ({
 function cloneUser(user) {
   return {
     ...user,
+    attendedExperienceIds: [...(user.attendedExperienceIds ?? [])],
+    friendIds: [...(user.friendIds ?? [])],
     participatingEventIds: [...(user.participatingEventIds ?? [])],
     savedEventIds: [...(user.savedEventIds ?? [])],
   };

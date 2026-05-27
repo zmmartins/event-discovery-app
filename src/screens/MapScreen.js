@@ -1,7 +1,15 @@
+import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { Animated, Platform, Pressable, StyleSheet, View } from "react-native";
+import {
+  Animated,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -15,6 +23,7 @@ import {
   LOG_ACTIONS,
   logInteraction,
 } from "../services/interactionLogService";
+import { getForegroundUserLocation } from "../services/locationService";
 import { colors } from "../theme/colors";
 
 const LISBON_REGION = {
@@ -32,6 +41,7 @@ const BOTTOM_NAV_HEIGHT = 64;
 const BOTTOM_NAV_GAP = 12;
 const PREVIEW_HORIZONTAL_PADDING = 20;
 const PREVIEW_MAX_WIDTH = 380;
+const LOCATION_CENTER_ANIMATION_MS = 700;
 
 const MONOCHROME_MAP_STYLE = [
   {
@@ -105,15 +115,68 @@ const MONOCHROME_MAP_STYLE = [
   },
 ];
 
+function CurrentLocationMarker() {
+  return (
+    <View pointerEvents="none" style={styles.userLocationMarker}>
+      <View style={styles.userLocationPulse} />
+      <View style={styles.userLocationRing}>
+        <View style={styles.userLocationDot} />
+      </View>
+    </View>
+  );
+}
+
+function getLocationStatusLabel(status) {
+  if (status === "locating") return "LOCATING";
+  if (status === "available") return "NEAR YOU";
+
+  return "LISBON";
+}
+
+function LocationStatusIndicator({ status, top }) {
+  const isAvailable = status === "available";
+  const isLocating = status === "locating";
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.locationStatus,
+        isAvailable && styles.locationStatusAvailable,
+        { top },
+      ]}
+    >
+      <Ionicons
+        name={isLocating ? "radio-outline" : "location"}
+        size={14}
+        color={isAvailable ? colors.surface : colors.iconMuted}
+      />
+      <Text
+        style={[
+          styles.locationStatusText,
+          isAvailable && styles.locationStatusTextAvailable,
+        ]}
+      >
+        {getLocationStatusLabel(status)}
+      </Text>
+    </View>
+  );
+}
+
 export default function MapScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const mapRef = useRef(null);
+  const hasRequestedInitialLocationRef = useRef(false);
+  const isMapReadyRef = useRef(false);
   const currentRegionRef = useRef(LISBON_REGION);
+  const pendingInitialLocationRegionRef = useRef(null);
   const previewAnimation = useRef(new Animated.Value(0)).current;
   const [events, setEvents] = useState([]);
+  const [locationStatus, setLocationStatus] = useState("locating");
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
   const {
     deactivateDiscoveryMode,
     filterDiscoveryEvents,
@@ -137,6 +200,17 @@ export default function MapScreen() {
     top: insets.top + TOP_NAV_OFFSET + TOP_NAV_HEIGHT + PREVIEW_TOP_GAP,
   };
 
+  const centerMapOnRegion = useCallback((region, duration) => {
+    currentRegionRef.current = region;
+
+    if (isMapReadyRef.current && mapRef.current) {
+      mapRef.current.animateToRegion(region, duration);
+      return;
+    }
+
+    pendingInitialLocationRegionRef.current = region;
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
@@ -153,6 +227,52 @@ export default function MapScreen() {
         setSelectedEvent(null);
       };
     }, [filterDiscoveryEvents, previewAnimation]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      if (hasRequestedInitialLocationRef.current) {
+        return () => {
+          isActive = false;
+        };
+      }
+
+      hasRequestedInitialLocationRef.current = true;
+      setLocationStatus("locating");
+
+      getForegroundUserLocation({
+        route: pathname,
+        screen: "MapScreen",
+        source: "explore_map_initial_focus",
+      }).then((result) => {
+        if (!isActive) return;
+
+        if (result.status === "available" && result.coordinate) {
+          const currentRegion = currentRegionRef.current || LISBON_REGION;
+          const nextRegion = {
+            latitude: result.coordinate.latitude,
+            latitudeDelta:
+              currentRegion.latitudeDelta || LISBON_REGION.latitudeDelta,
+            longitude: result.coordinate.longitude,
+            longitudeDelta:
+              currentRegion.longitudeDelta || LISBON_REGION.longitudeDelta,
+          };
+
+          setUserLocation(result.coordinate);
+          setLocationStatus("available");
+          centerMapOnRegion(nextRegion, LOCATION_CENTER_ANIMATION_MS);
+          return;
+        }
+
+        setLocationStatus(result.status === "denied" ? "denied" : "unavailable");
+      });
+
+      return () => {
+        isActive = false;
+      };
+    }, [centerMapOnRegion, pathname]),
   );
 
   const closePreview = useCallback((reason) => {
@@ -182,6 +302,18 @@ export default function MapScreen() {
 
   const handleRegionChangeComplete = useCallback((region) => {
     currentRegionRef.current = region;
+  }, []);
+
+  const handleMapReady = useCallback(() => {
+    isMapReadyRef.current = true;
+
+    if (pendingInitialLocationRegionRef.current) {
+      mapRef.current?.animateToRegion(
+        pendingInitialLocationRegionRef.current,
+        LOCATION_CENTER_ANIMATION_MS,
+      );
+      pendingInitialLocationRegionRef.current = null;
+    }
   }, []);
 
   const handleMapPress = useCallback(() => {
@@ -270,6 +402,7 @@ export default function MapScreen() {
         loadingEnabled
         loadingIndicatorColor="#111111"
         mapType="standard"
+        onMapReady={handleMapReady}
         onPanDrag={handleMapPanDrag}
         onPress={handleMapPress}
         onRegionChangeComplete={handleRegionChangeComplete}
@@ -295,7 +428,28 @@ export default function MapScreen() {
             <EventPin event={event} isDiscoverMode={isDiscoveryActive} />
           </Marker>
         ))}
+
+        {userLocation && (
+          <Marker
+            anchor={{ x: 0.5, y: 0.5 }}
+            coordinate={{
+              latitude: userLocation.latitude,
+              longitude: userLocation.longitude,
+            }}
+            key="user-location"
+            tappable={false}
+            tracksViewChanges={false}
+            zIndex={1000}
+          >
+            <CurrentLocationMarker />
+          </Marker>
+        )}
       </MapView>
+
+      <LocationStatusIndicator
+        status={locationStatus}
+        top={insets.top + 64}
+      />
 
       {isDiscoveryActive && (
         <>
@@ -371,6 +525,79 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  locationStatus: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.86)",
+    borderColor: "rgba(255, 255, 255, 0.62)",
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    elevation: 5,
+    flexDirection: "row",
+    gap: 5,
+    minHeight: 32,
+    paddingHorizontal: 10,
+    position: "absolute",
+    right: 18,
+    shadowColor: "#000000",
+    shadowOffset: {
+      width: 0,
+      height: 5,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    zIndex: 1,
+  },
+  locationStatusAvailable: {
+    backgroundColor: colors.primary,
+    borderColor: "rgba(255, 255, 255, 0.72)",
+  },
+  locationStatusText: {
+    color: colors.iconMuted,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  locationStatusTextAvailable: {
+    color: colors.surface,
+  },
+  userLocationMarker: {
+    alignItems: "center",
+    height: 42,
+    justifyContent: "center",
+    overflow: "visible",
+    width: 42,
+  },
+  userLocationPulse: {
+    backgroundColor: "rgba(57, 245, 122, 0.28)",
+    borderRadius: 21,
+    height: 42,
+    position: "absolute",
+    width: 42,
+  },
+  userLocationRing: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+    borderRadius: 15,
+    borderWidth: 4,
+    elevation: 4,
+    height: 30,
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    width: 30,
+  },
+  userLocationDot: {
+    backgroundColor: colors.primary,
+    borderRadius: 5,
+    height: 10,
+    width: 10,
   },
   blurLayer: {
     ...StyleSheet.absoluteFillObject,
