@@ -9,7 +9,12 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Allow Event Discovery to use your location to center the explore map near you.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.eventdiscovery.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -45,10 +50,7 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "c1b8638a-baef-46d6-88be-9f386e574c4e"
-      }
+      "router": {}
     }
   }
 }
