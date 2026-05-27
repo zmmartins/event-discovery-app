@@ -43,6 +43,10 @@ const PREVIEW_HORIZONTAL_PADDING = 20;
 const PREVIEW_MAX_WIDTH = 380;
 const LOCATION_CENTER_ANIMATION_MS = 700;
 
+let hasAutoCenteredOnUserThisSession = false;
+let sessionLocationStatus = "idle";
+let sessionUserLocation = null;
+
 const MONOCHROME_MAP_STYLE = [
   {
     elementType: "geometry",
@@ -133,16 +137,22 @@ function getLocationStatusLabel(status) {
   return "LISBON";
 }
 
-function LocationStatusIndicator({ status, top }) {
+function LocationStatusIndicator({ onPress, status, top }) {
   const isAvailable = status === "available";
   const isLocating = status === "locating";
 
   return (
-    <View
-      pointerEvents="none"
+    <Pressable
+      accessibilityHint="Centers the map on your current location"
+      accessibilityLabel="Recenter map to your location"
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isLocating }}
+      disabled={isLocating}
+      onPress={onPress}
       style={[
         styles.locationStatus,
         isAvailable && styles.locationStatusAvailable,
+        isLocating && styles.locationStatusDisabled,
         { top },
       ]}
     >
@@ -159,7 +169,7 @@ function LocationStatusIndicator({ status, top }) {
       >
         {getLocationStatusLabel(status)}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -168,15 +178,16 @@ export default function MapScreen() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const mapRef = useRef(null);
-  const hasRequestedInitialLocationRef = useRef(false);
   const isMapReadyRef = useRef(false);
   const currentRegionRef = useRef(LISBON_REGION);
   const pendingInitialLocationRegionRef = useRef(null);
   const previewAnimation = useRef(new Animated.Value(0)).current;
   const [events, setEvents] = useState([]);
-  const [locationStatus, setLocationStatus] = useState("locating");
+  const [locationStatus, setLocationStatus] = useState(
+    sessionLocationStatus === "idle" ? "locating" : sessionLocationStatus,
+  );
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [userLocation, setUserLocation] = useState(null);
+  const [userLocation, setUserLocation] = useState(sessionUserLocation);
   const {
     deactivateDiscoveryMode,
     filterDiscoveryEvents,
@@ -211,6 +222,41 @@ export default function MapScreen() {
     pendingInitialLocationRegionRef.current = region;
   }, []);
 
+  const centerMapOnCoordinate = useCallback(
+    (coordinate, duration = LOCATION_CENTER_ANIMATION_MS) => {
+      const currentRegion = currentRegionRef.current || LISBON_REGION;
+      const nextRegion = {
+        latitude: coordinate.latitude,
+        latitudeDelta: currentRegion.latitudeDelta || LISBON_REGION.latitudeDelta,
+        longitude: coordinate.longitude,
+        longitudeDelta:
+          currentRegion.longitudeDelta || LISBON_REGION.longitudeDelta,
+      };
+
+      centerMapOnRegion(nextRegion, duration);
+    },
+    [centerMapOnRegion],
+  );
+
+  const applyLocationResult = useCallback((result, shouldCenter) => {
+    if (result.status === "available" && result.coordinate) {
+      sessionUserLocation = result.coordinate;
+      sessionLocationStatus = "available";
+      setUserLocation(result.coordinate);
+      setLocationStatus("available");
+
+      if (shouldCenter) {
+        centerMapOnCoordinate(result.coordinate);
+      }
+
+      return;
+    }
+
+    sessionLocationStatus =
+      result.status === "denied" ? "denied" : "unavailable";
+    setLocationStatus(sessionLocationStatus);
+  }, [centerMapOnCoordinate]);
+
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
@@ -233,13 +279,21 @@ export default function MapScreen() {
     useCallback(() => {
       let isActive = true;
 
-      if (hasRequestedInitialLocationRef.current) {
+      if (hasAutoCenteredOnUserThisSession) {
+        if (sessionUserLocation) {
+          setUserLocation(sessionUserLocation);
+        }
+        if (sessionLocationStatus !== "idle") {
+          setLocationStatus(sessionLocationStatus);
+        }
+
         return () => {
           isActive = false;
         };
       }
 
-      hasRequestedInitialLocationRef.current = true;
+      hasAutoCenteredOnUserThisSession = true;
+      sessionLocationStatus = "locating";
       setLocationStatus("locating");
 
       getForegroundUserLocation({
@@ -247,32 +301,25 @@ export default function MapScreen() {
         screen: "MapScreen",
         source: "explore_map_initial_focus",
       }).then((result) => {
-        if (!isActive) return;
+        if (!isActive) {
+          if (result.status === "available" && result.coordinate) {
+            sessionUserLocation = result.coordinate;
+            sessionLocationStatus = "available";
+            return;
+          }
 
-        if (result.status === "available" && result.coordinate) {
-          const currentRegion = currentRegionRef.current || LISBON_REGION;
-          const nextRegion = {
-            latitude: result.coordinate.latitude,
-            latitudeDelta:
-              currentRegion.latitudeDelta || LISBON_REGION.latitudeDelta,
-            longitude: result.coordinate.longitude,
-            longitudeDelta:
-              currentRegion.longitudeDelta || LISBON_REGION.longitudeDelta,
-          };
-
-          setUserLocation(result.coordinate);
-          setLocationStatus("available");
-          centerMapOnRegion(nextRegion, LOCATION_CENTER_ANIMATION_MS);
+          sessionLocationStatus =
+            result.status === "denied" ? "denied" : "unavailable";
           return;
         }
 
-        setLocationStatus(result.status === "denied" ? "denied" : "unavailable");
+        applyLocationResult(result, true);
       });
 
       return () => {
         isActive = false;
       };
-    }, [centerMapOnRegion, pathname]),
+    }, [applyLocationResult, pathname]),
   );
 
   const closePreview = useCallback((reason) => {
@@ -393,6 +440,30 @@ export default function MapScreen() {
     });
   }, [closePreview, deactivateDiscoveryMode, pathname]);
 
+  const handleLocationStatusPress = useCallback(() => {
+    logInteraction(LOG_ACTIONS.userLocationRecentered, {
+      route: pathname,
+      screen: "MapScreen",
+      source: "location_status_indicator",
+    }).catch(() => null);
+
+    if (userLocation) {
+      centerMapOnCoordinate(userLocation);
+      return;
+    }
+
+    sessionLocationStatus = "locating";
+    setLocationStatus("locating");
+
+    getForegroundUserLocation({
+      route: pathname,
+      screen: "MapScreen",
+      source: "location_status_indicator",
+    }).then((result) => {
+      applyLocationResult(result, true);
+    });
+  }, [applyLocationResult, centerMapOnCoordinate, pathname, userLocation]);
+
   return (
     <View style={styles.container}>
       <MapView
@@ -447,6 +518,7 @@ export default function MapScreen() {
       </MapView>
 
       <LocationStatusIndicator
+        onPress={handleLocationStatusPress}
         status={locationStatus}
         top={insets.top + 64}
       />
@@ -551,6 +623,9 @@ const styles = StyleSheet.create({
   locationStatusAvailable: {
     backgroundColor: colors.primary,
     borderColor: "rgba(255, 255, 255, 0.72)",
+  },
+  locationStatusDisabled: {
+    opacity: 0.78,
   },
   locationStatusText: {
     color: colors.iconMuted,

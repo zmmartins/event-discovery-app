@@ -34,6 +34,7 @@ export const LOG_ACTIONS = {
   shakeDetected: "shake_detected",
   topNavSelected: "top_nav_selected",
   userLocationDetected: "user_location_detected",
+  userLocationRecentered: "user_location_recentered",
   userLocationUnavailable: "user_location_unavailable",
 };
 
