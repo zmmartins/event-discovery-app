@@ -1,11 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { isLiquidGlassAvailable } from "expo-glass-effect";
-import {
-  Icon,
-  Label,
-  NativeTabs,
-  VectorIcon,
-} from "expo-router/unstable-native-tabs";
+import { Icon, Label, NativeTabs, VectorIcon } from "expo-router/unstable-native-tabs";
 import { Platform } from "react-native";
 
 import ScreenStatusBar from "../../src/components/ScreenStatusBar";
@@ -33,8 +28,7 @@ const tabBackgroundColor = Platform.select({
   default: colors.surface,
 });
 
-const tabBlurEffect =
-  Platform.OS === "ios" ? "systemUltraThinMaterialLight" : undefined;
+const tabBlurEffect = Platform.OS === "ios" ? "systemUltraThinMaterialLight" : undefined;
 
 const lightTabBarProps = {
   backgroundColor: tabBackgroundColor,
