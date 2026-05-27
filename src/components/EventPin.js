@@ -39,6 +39,12 @@ const particleLayers = [
   { count: 42, size: 4, opacity: 0.44 },
 ];
 
+const discoverParticleLayers = [
+  { count: 34, size: 7, opacity: 0.94 },
+  { count: 44, size: 5, opacity: 0.72 },
+  { count: 58, size: 3, opacity: 0.52 },
+];
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -66,13 +72,14 @@ function getCloudRadius(popularity) {
   return MIN_CLOUD_RADIUS + (MAX_CLOUD_RADIUS - MIN_CLOUD_RADIUS) * popularityRatio;
 }
 
-function createParticles(eventId, cloudRadius) {
+function createParticles(eventId, cloudRadius, isDiscoverMode = false) {
   const seed = hashString(eventId);
   const particles = [];
+  const layers = isDiscoverMode ? discoverParticleLayers : particleLayers;
   const innerRadius = PIN_SIZE / 2 + 8;
-  const radiusStep = (cloudRadius - innerRadius) / (particleLayers.length - 1);
+  const radiusStep = (cloudRadius - innerRadius) / (layers.length - 1);
 
-  particleLayers.forEach((layer, layerIndex) => {
+  layers.forEach((layer, layerIndex) => {
     const layerRadius = innerRadius + radiusStep * layerIndex;
 
     for (let index = 0; index < layer.count; index += 1) {
@@ -97,12 +104,14 @@ function createParticles(eventId, cloudRadius) {
   return particles;
 }
 
-export default function EventPin({ event }) {
+export default function EventPin({ event, isDiscoverMode = false }) {
   const { attendingFriends = [], id, popularity = 0, thumbnailKey } = event;
-  const cloudRadius = getCloudRadius(popularity);
+  const cloudRadius = isDiscoverMode
+    ? Math.max(getCloudRadius(popularity), 86)
+    : getCloudRadius(popularity);
   const contentRadius = Math.max(cloudRadius, 58);
   const containerSize = contentRadius * 2;
-  const particles = createParticles(id, cloudRadius);
+  const particles = createParticles(id, cloudRadius, isDiscoverMode);
   const avatars = attendingFriends.slice(0, 4);
   const circleOffset = contentRadius - PIN_SIZE / 2;
   const tailTop = circleOffset + PIN_SIZE - 2;
@@ -133,6 +142,7 @@ export default function EventPin({ event }) {
             key={particle.id}
             style={[
               styles.particle,
+              isDiscoverMode && styles.discoverParticle,
               {
                 borderRadius: particle.size / 2,
                 height: particle.size,
@@ -209,6 +219,9 @@ const styles = StyleSheet.create({
   particle: {
     backgroundColor: PARTICLE_COLOR,
     position: "absolute",
+  },
+  discoverParticle: {
+    backgroundColor: "#F03BD4",
   },
   pin: {
     alignItems: "center",

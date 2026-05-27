@@ -7,6 +7,9 @@ const SCHEMA_VERSION = 2;
 export const LOG_ACTIONS = {
   appOpened: "app_opened",
   communityOpened: "community_opened",
+  discoverModeActivated: "discover_mode_activated",
+  discoverModeDisabled: "discover_mode_disabled",
+  discoverResultsShown: "discover_results_shown",
   eventBookmarkToggled: "event_bookmark_toggled",
   eventCardPressed: "event_card_pressed",
   eventDetailOpened: "event_detail_opened",
@@ -22,6 +25,7 @@ export const LOG_ACTIONS = {
   profileOpened: "profile_opened",
   searchOpened: "search_opened",
   shakeDiscoverOpened: "shake_discover_opened",
+  shakeDetected: "shake_detected",
   topNavSelected: "top_nav_selected",
 };
 

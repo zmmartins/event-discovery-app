@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDiscoveryMode } from "../context/DiscoveryModeContext";
 import { colors } from "../theme/colors";
 import TopNav from "./TopNav";
 
@@ -15,12 +16,16 @@ function normalizePathname(pathname) {
 
 export default function AppShell({ children }) {
   const insets = useSafeAreaInsets();
+  const { isDiscoveryActive } = useDiscoveryMode();
   const pathname = normalizePathname(usePathname());
   const showTopNav = discoveryRoutes.includes(pathname);
   const isEdgeToEdge = edgeToEdgeRoutes.includes(pathname);
+  const isDiscoverSurface =
+    pathname === "/map/shake-discover" ||
+    (isDiscoveryActive && edgeToEdgeRoutes.includes(pathname));
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, isDiscoverSurface && styles.discoverRoot]}>
       {showTopNav && (
         <View style={[styles.topNav, { top: insets.top + 8 }]}>
           <TopNav />
@@ -49,6 +54,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  discoverRoot: {
+    backgroundColor: colors.primary,
   },
   content: {
     flex: 1,

@@ -5,14 +5,17 @@ import { Animated, Platform, Pressable, StyleSheet, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import DiscoverModePill from "../components/DiscoverModePill";
 import EventCard from "../components/EventCard";
 import EventPin from "../components/EventPin";
+import { useDiscoveryMode } from "../context/DiscoveryModeContext";
 import useInteractionLogger from "../hooks/useInteractionLogger";
 import { getEvents } from "../services/eventService";
 import {
   LOG_ACTIONS,
   logInteraction,
 } from "../services/interactionLogService";
+import { colors } from "../theme/colors";
 
 const LISBON_REGION = {
   latitude: 38.7223,
@@ -111,6 +114,11 @@ export default function MapScreen() {
   const previewAnimation = useRef(new Animated.Value(0)).current;
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const {
+    deactivateDiscoveryMode,
+    filterDiscoveryEvents,
+    isDiscoveryActive,
+  } = useDiscoveryMode();
   useInteractionLogger(LOG_ACTIONS.mapViewOpened, {
     screen: "MapScreen",
   });
@@ -135,7 +143,7 @@ export default function MapScreen() {
 
       getEvents().then((nextEvents) => {
         if (isActive) {
-          setEvents(nextEvents);
+          setEvents(filterDiscoveryEvents(nextEvents));
         }
       });
 
@@ -144,7 +152,7 @@ export default function MapScreen() {
         previewAnimation.setValue(0);
         setSelectedEvent(null);
       };
-    }, [previewAnimation]),
+    }, [filterDiscoveryEvents, previewAnimation]),
   );
 
   const closePreview = useCallback((reason) => {
@@ -244,6 +252,15 @@ export default function MapScreen() {
     );
   }, []);
 
+  const handleDiscoverDismiss = useCallback(() => {
+    closePreview("discover_disabled");
+    deactivateDiscoveryMode({
+      route: pathname,
+      screen: "MapScreen",
+      source: "discover_pill",
+    });
+  }, [closePreview, deactivateDiscoveryMode, pathname]);
+
   return (
     <View style={styles.container}>
       <MapView
@@ -271,14 +288,24 @@ export default function MapScreen() {
           <Marker
             anchor={{ x: 0.5, y: 1 }}
             coordinate={{ latitude: event.latitude, longitude: event.longitude }}
-            key={event.id}
+            key={`${event.id}-${isDiscoveryActive ? "discover" : "normal"}`}
             onPress={(markerEvent) => handleMarkerPress(markerEvent, event)}
-            tracksViewChanges={false}
+            tracksViewChanges={isDiscoveryActive}
           >
-            <EventPin event={event} />
+            <EventPin event={event} isDiscoverMode={isDiscoveryActive} />
           </Marker>
         ))}
       </MapView>
+
+      {isDiscoveryActive && (
+        <>
+          <View pointerEvents="none" style={styles.discoverBorder} />
+          <DiscoverModePill
+            onPress={handleDiscoverDismiss}
+            style={[styles.discoverPill, { top: insets.top + 62 }]}
+          />
+        </>
+      )}
 
       {selectedEvent && (
         <>
@@ -368,5 +395,17 @@ const styles = StyleSheet.create({
   previewCard: {
     maxWidth: PREVIEW_MAX_WIDTH,
     width: "100%",
+  },
+  discoverBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderColor: colors.primary,
+    borderWidth: 5,
+    zIndex: 3,
+  },
+  discoverPill: {
+    left: "50%",
+    marginLeft: -45,
+    position: "absolute",
+    zIndex: 4,
   },
 });

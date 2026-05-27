@@ -5,7 +5,34 @@ import {
   toggleSavedEvent as toggleUserSavedEvent,
 } from "./userService";
 
+export const DEFAULT_DISCOVER_COORDINATE = {
+  latitude: 38.7223,
+  longitude: -9.1393,
+};
+
 let events = [...mockEvents];
+
+function getDistanceInKm(firstCoordinate, secondCoordinate) {
+  const earthRadiusKm = 6371;
+  const latitudeDelta =
+    ((secondCoordinate.latitude - firstCoordinate.latitude) * Math.PI) / 180;
+  const longitudeDelta =
+    ((secondCoordinate.longitude - firstCoordinate.longitude) * Math.PI) / 180;
+  const firstLatitude = (firstCoordinate.latitude * Math.PI) / 180;
+  const secondLatitude = (secondCoordinate.latitude * Math.PI) / 180;
+  const haversine =
+    Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
+    Math.cos(firstLatitude) *
+      Math.cos(secondLatitude) *
+      Math.sin(longitudeDelta / 2) *
+      Math.sin(longitudeDelta / 2);
+
+  return (
+    earthRadiusKm *
+    2 *
+    Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+  );
+}
 
 function decorateEvent(event, user) {
   if (!event) return event;
@@ -57,8 +84,24 @@ export async function toggleSavedEvent(id) {
   return getEventById(id);
 }
 
-export async function getDiscoverEvents() {
+export async function getDiscoverEvents({
+  latitude = DEFAULT_DISCOVER_COORDINATE.latitude,
+  limit = 4,
+  longitude = DEFAULT_DISCOVER_COORDINATE.longitude,
+} = {}) {
   const decoratedEvents = await getEvents();
+  const origin = { latitude, longitude };
 
-  return [...decoratedEvents].sort(() => 0.5 - Math.random()).slice(0, 3);
+  return [...decoratedEvents]
+    .map((event) => ({
+      event,
+      ranking:
+        getDistanceInKm(origin, {
+          latitude: event.latitude,
+          longitude: event.longitude,
+        }) + Math.random() * 0.35,
+    }))
+    .sort((firstEvent, secondEvent) => firstEvent.ranking - secondEvent.ranking)
+    .slice(0, limit)
+    .map(({ event }) => event);
 }
