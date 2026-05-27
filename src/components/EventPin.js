@@ -1,5 +1,7 @@
 import { Image, StyleSheet, View } from "react-native";
 
+import { colors } from "../theme/colors";
+
 const PIN_SIZE = 82;
 const PIN_BORDER_WIDTH = 6;
 const TAIL_HEIGHT = 42;
@@ -8,8 +10,6 @@ const AVATAR_SIZE = 32;
 const AVATAR_BORDER_WIDTH = 3;
 const MIN_CLOUD_RADIUS = 54;
 const MAX_CLOUD_RADIUS = 76;
-const PARTICLE_COLOR = "#f03bd4";
-const PIN_GREEN = "#39f57a";
 
 const avatarMap = {
   ana: require("../assets/avatars/ana.png"),
@@ -217,15 +217,15 @@ const styles = StyleSheet.create({
     top: 0,
   },
   particle: {
-    backgroundColor: PARTICLE_COLOR,
+    backgroundColor: colors.secondary,
     position: "absolute",
   },
   discoverParticle: {
-    backgroundColor: "#F03BD4",
+    backgroundColor: colors.secondary,
   },
   pin: {
     alignItems: "center",
-    backgroundColor: PIN_GREEN,
+    backgroundColor: colors.primary,
     borderRadius: PIN_SIZE / 2,
     height: PIN_SIZE,
     justifyContent: "center",
@@ -242,8 +242,8 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: PARTICLE_COLOR,
+    backgroundColor: colors.surface,
+    borderColor: colors.secondary,
     borderRadius: AVATAR_SIZE / 2,
     borderWidth: AVATAR_BORDER_WIDTH,
     height: AVATAR_SIZE,
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: TAIL_WIDTH / 2,
     borderRightColor: "transparent",
     borderRightWidth: TAIL_WIDTH / 2,
-    borderTopColor: PIN_GREEN,
+    borderTopColor: colors.primary,
     borderTopWidth: TAIL_HEIGHT,
     height: 0,
     position: "absolute",

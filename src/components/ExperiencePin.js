@@ -38,7 +38,7 @@ const styles = StyleSheet.create({
     elevation: 5,
     height: PIN_SIZE,
     justifyContent: "center",
-    shadowColor: "#000000",
+    shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
       height: 5,

@@ -25,6 +25,7 @@ import {
 } from "../services/interactionLogService";
 import { getForegroundUserLocation } from "../services/locationService";
 import { colors } from "../theme/colors";
+import { APP_MAP_STYLE } from "../theme/mapStyle";
 
 const LISBON_REGION = {
   latitude: 38.7223,
@@ -46,78 +47,6 @@ const LOCATION_CENTER_ANIMATION_MS = 700;
 let hasAutoCenteredOnUserThisSession = false;
 let sessionLocationStatus = "idle";
 let sessionUserLocation = null;
-
-const MONOCHROME_MAP_STYLE = [
-  {
-    elementType: "geometry",
-    stylers: [{ color: "#f4f4f4" }],
-  },
-  {
-    elementType: "labels.icon",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#202020" }],
-  },
-  {
-    elementType: "labels.text.stroke",
-    stylers: [{ color: "#ffffff" }],
-  },
-  {
-    featureType: "administrative",
-    elementType: "geometry",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "landscape",
-    elementType: "geometry",
-    stylers: [{ color: "#f1f1f1" }],
-  },
-  {
-    featureType: "poi",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry",
-    stylers: [{ color: "#ffffff" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#d7d7d7" }],
-  },
-  {
-    featureType: "road",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#6f6f6f" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry",
-    stylers: [{ color: "#ffffff" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#cfcfcf" }],
-  },
-  {
-    featureType: "transit",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#d9dede" }],
-  },
-  {
-    featureType: "water",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#767676" }],
-  },
-];
 
 function CurrentLocationMarker() {
   return (
@@ -159,7 +88,7 @@ function LocationStatusIndicator({ onPress, status, top }) {
       <Ionicons
         name={isLocating ? "radio-outline" : "location"}
         size={14}
-        color={isAvailable ? colors.surface : colors.iconMuted}
+        color={isAvailable ? colors.iconActive : colors.iconMuted}
       />
       <Text
         style={[
@@ -467,11 +396,11 @@ export default function MapScreen() {
   return (
     <View style={styles.container}>
       <MapView
-        customMapStyle={MONOCHROME_MAP_STYLE}
+        customMapStyle={APP_MAP_STYLE}
         initialRegion={LISBON_REGION}
-        loadingBackgroundColor="#f4f4f4"
+        loadingBackgroundColor={colors.background}
         loadingEnabled
-        loadingIndicatorColor="#111111"
+        loadingIndicatorColor={colors.text}
         mapType="standard"
         onMapReady={handleMapReady}
         onPanDrag={handleMapPanDrag}
@@ -600,8 +529,8 @@ const styles = StyleSheet.create({
   },
   locationStatus: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.86)",
-    borderColor: "rgba(255, 255, 255, 0.62)",
+    backgroundColor: colors.effects.surfaceOverlay,
+    borderColor: colors.effects.surfaceBorder,
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     elevation: 5,
@@ -611,7 +540,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     position: "absolute",
     right: 18,
-    shadowColor: "#000000",
+    shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
       height: 5,
@@ -622,7 +551,7 @@ const styles = StyleSheet.create({
   },
   locationStatusAvailable: {
     backgroundColor: colors.primary,
-    borderColor: "rgba(255, 255, 255, 0.72)",
+    borderColor: colors.effects.surfaceStrongBorder,
   },
   locationStatusDisabled: {
     opacity: 0.78,
@@ -634,7 +563,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   locationStatusTextAvailable: {
-    color: colors.surface,
+    color: colors.text,
   },
   userLocationMarker: {
     alignItems: "center",
@@ -644,7 +573,7 @@ const styles = StyleSheet.create({
     width: 42,
   },
   userLocationPulse: {
-    backgroundColor: "rgba(57, 245, 122, 0.28)",
+    backgroundColor: colors.effects.primaryIndicator,
     borderRadius: 21,
     height: 42,
     position: "absolute",
@@ -659,7 +588,7 @@ const styles = StyleSheet.create({
     elevation: 4,
     height: 30,
     justifyContent: "center",
-    shadowColor: "#000000",
+    shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
       height: 4,
@@ -683,7 +612,7 @@ const styles = StyleSheet.create({
   },
   blurSurface: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255, 255, 255, 0.22)",
+    backgroundColor: colors.effects.tabLiquidGlass,
   },
   previewLayer: {
     alignItems: "center",

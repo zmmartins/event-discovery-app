@@ -51,7 +51,7 @@ function getLiquidGlassAvailable() {
 
 const liquidGlassAvailable = getLiquidGlassAvailable();
 const glassColorScheme = "light";
-const lightGlassTintColor = "rgba(255, 255, 255, 0.34)";
+const lightGlassTintColor = colors.effects.glassTint;
 
 function normalizePathname(pathname) {
   if (!pathname || pathname === "/") return "/";
@@ -130,7 +130,7 @@ function TopNavButton({ item }) {
       <Ionicons
         name={item.icon}
         size={22}
-        color={isActive ? colors.surface : colors.iconMuted}
+        color={isActive ? colors.iconActive : colors.iconMuted}
       />
     </Pressable>
   );
@@ -184,10 +184,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   glassSurface: {
-    borderColor: "rgba(255, 255, 255, 0.46)",
+    borderColor: colors.effects.glassBorder,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
-    shadowColor: "#000000",
+    shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
       height: 6,
@@ -196,17 +196,17 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
   },
   iosLiquidGlassSurface: {
-    backgroundColor: "rgba(255, 255, 255, 0.22)",
+    backgroundColor: colors.effects.tabLiquidGlass,
   },
   iosGlassFallback: {
-    backgroundColor: "rgba(255, 255, 255, 0.24)",
+    backgroundColor: colors.effects.tabGlass,
   },
   androidGlassFallback: {
     backgroundColor: colors.surface,
     elevation: 6,
   },
   defaultGlassFallback: {
-    backgroundColor: "rgba(255, 255, 255, 0.82)",
+    backgroundColor: colors.effects.glassSurface,
   },
   iconButton: {
     alignItems: "center",

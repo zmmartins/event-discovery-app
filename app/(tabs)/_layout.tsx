@@ -19,8 +19,8 @@ function getLiquidGlassAvailable() {
 const liquidGlassAvailable = getLiquidGlassAvailable();
 
 const lightGlassBackgroundColor = liquidGlassAvailable
-  ? "rgba(255, 255, 255, 0.22)"
-  : "rgba(255, 255, 255, 0.24)";
+  ? colors.effects.tabLiquidGlass
+  : colors.effects.tabGlass;
 
 const tabBackgroundColor = Platform.select({
   ios: lightGlassBackgroundColor,
@@ -35,7 +35,7 @@ const lightTabBarProps = {
   blurEffect: tabBlurEffect,
   disableTransparentOnScrollEdge: true,
   iconColor: colors.iconMuted,
-  shadowColor: "rgba(0, 0, 0, 0.04)",
+  shadowColor: colors.effects.shadowSubtle,
 };
 
 export default function TabsLayout() {
@@ -50,14 +50,14 @@ export default function TabsLayout() {
         disableIndicator={Platform.OS !== "android"}
         iconColor={{
           default: colors.iconMuted,
-          selected: colors.primary,
+          selected: colors.iconActive,
         }}
-        indicatorColor="rgba(57, 245, 122, 0.28)"
+        indicatorColor={colors.effects.primaryIndicator}
         labelVisibilityMode="unlabeled"
         minimizeBehavior="automatic"
-        rippleColor="rgba(57, 245, 122, 0.18)"
-        shadowColor="rgba(0, 0, 0, 0.04)"
-        tintColor={colors.primary}
+        rippleColor={colors.effects.primaryPressed}
+        shadowColor={colors.effects.shadowSubtle}
+        tintColor={colors.iconActive}
       >
         <NativeTabs.Trigger name="map">
           <NativeTabs.Trigger.TabBar {...lightTabBarProps} />
@@ -67,7 +67,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="map" />,
               selected: <VectorIcon family={Ionicons} name="map" />,
             }}
-            selectedColor={colors.primary}
+            selectedColor={colors.iconActive}
           />
           <Label hidden>Explore</Label>
         </NativeTabs.Trigger>
@@ -80,7 +80,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="navigate" />,
               selected: <VectorIcon family={Ionicons} name="navigate" />,
             }}
-            selectedColor={colors.primary}
+            selectedColor={colors.iconActive}
           />
           <Label hidden>Messages</Label>
         </NativeTabs.Trigger>
@@ -96,7 +96,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="search" />,
               selected: <VectorIcon family={Ionicons} name="search" />,
             }}
-            selectedColor={colors.primary}
+            selectedColor={colors.iconActive}
           />
           <Label hidden>Search</Label>
         </NativeTabs.Trigger>
@@ -109,7 +109,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="people" />,
               selected: <VectorIcon family={Ionicons} name="people" />,
             }}
-            selectedColor={colors.primary}
+            selectedColor={colors.iconActive}
           />
           <Label hidden>Community</Label>
         </NativeTabs.Trigger>
@@ -122,7 +122,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="person" />,
               selected: <VectorIcon family={Ionicons} name="person" />,
             }}
-            selectedColor={colors.primary}
+            selectedColor={colors.iconActive}
           />
           <Label hidden>Profile</Label>
         </NativeTabs.Trigger>

@@ -2,6 +2,8 @@ import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { colors } from "../theme/colors";
+
 const statusBarStyles = {
   image: "light",
   lightBackground: "dark",
@@ -30,7 +32,7 @@ export default function ScreenStatusBar({
 
 const styles = StyleSheet.create({
   overlay: {
-    backgroundColor: "rgba(0, 0, 0, 0.18)",
+    backgroundColor: colors.effects.imageOverlay,
     left: 0,
     position: "absolute",
     right: 0,

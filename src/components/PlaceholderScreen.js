@@ -13,6 +13,7 @@ export default function PlaceholderScreen({ title }) {
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
+    backgroundColor: colors.background,
     flex: 1,
     justifyContent: "center",
     padding: 24,

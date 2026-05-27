@@ -22,6 +22,7 @@ import {
 } from "../services/interactionLogService";
 import { getCurrentUserProfile } from "../services/profileService";
 import { colors } from "../theme/colors";
+import { APP_MAP_STYLE } from "../theme/mapStyle";
 import { getAvatarImage, getEventImage } from "../utils/imageAssets";
 
 const DEFAULT_REGION = {
@@ -30,44 +31,6 @@ const DEFAULT_REGION = {
   longitude: -9.1393,
   longitudeDelta: 0.06,
 };
-
-const PROFILE_MAP_STYLE = [
-  {
-    elementType: "geometry",
-    stylers: [{ color: "#f4f4f4" }],
-  },
-  {
-    elementType: "labels.icon",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#202020" }],
-  },
-  {
-    elementType: "labels.text.stroke",
-    stylers: [{ color: "#ffffff" }],
-  },
-  {
-    featureType: "poi",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry",
-    stylers: [{ color: "#ffffff" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#d7d7d7" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#d9dede" }],
-  },
-];
 
 function getProfileRegion(pins) {
   if (!pins?.length) return DEFAULT_REGION;
@@ -152,7 +115,7 @@ function ViewSelector({ activeView, onChange }) {
             <Ionicons
               name={option.icon}
               size={22}
-              color={isActive ? colors.surface : colors.iconMuted}
+              color={isActive ? colors.iconActive : colors.iconMuted}
             />
             <Text
               style={[
@@ -312,11 +275,11 @@ export default function ProfileScreen() {
           ]}
         >
           <MapView
-            customMapStyle={PROFILE_MAP_STYLE}
+            customMapStyle={APP_MAP_STYLE}
             initialRegion={profileRegion}
-            loadingBackgroundColor="#f4f4f4"
+            loadingBackgroundColor={colors.background}
             loadingEnabled
-            loadingIndicatorColor="#111111"
+            loadingIndicatorColor={colors.text}
             mapType="standard"
             provider={PROVIDER_GOOGLE}
             showsBuildings={false}
@@ -398,13 +361,15 @@ const styles = StyleSheet.create({
     minWidth: 26,
   },
   statLabel: {
-    color: colors.mutedText,
+    color: colors.secondaryText,
     flex: 1,
     fontSize: 13,
     fontWeight: "700",
   },
   selector: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.softSurface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 22,
     flexDirection: "row",
     marginHorizontal: 24,
@@ -432,7 +397,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   selectorTextActive: {
-    color: colors.surface,
+    color: colors.text,
   },
   listContent: {
     paddingHorizontal: 20,
@@ -453,6 +418,8 @@ const styles = StyleSheet.create({
     width: "31.2%",
   },
   mapPanel: {
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 22,
     flex: 1,
     marginHorizontal: 20,

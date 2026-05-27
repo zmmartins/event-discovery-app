@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
   },
   discoverBubble: {
     alignItems: "center",
-    backgroundColor: "#F58BEA",
+    backgroundColor: colors.secondary,
     borderRadius: 86,
     height: 172,
     justifyContent: "center",
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     width: 172,
   },
   discoverBubbleGlow: {
-    backgroundColor: "rgba(255, 255, 255, 0.44)",
+    backgroundColor: colors.effects.surfaceGlow,
     borderRadius: 60,
     height: 120,
     left: 18,

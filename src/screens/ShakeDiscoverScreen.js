@@ -171,11 +171,11 @@ const styles = StyleSheet.create({
   },
   bubble: {
     alignItems: "center",
-    backgroundColor: "#F58BEA",
+    backgroundColor: colors.secondary,
     borderRadius: BUBBLE_SIZE / 2,
     height: BUBBLE_SIZE,
     justifyContent: "center",
-    shadowColor: "#FFFFFF",
+    shadowColor: colors.surface,
     shadowOffset: {
       width: -12,
       height: -14,
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     width: BUBBLE_SIZE,
   },
   bubbleGlow: {
-    backgroundColor: "rgba(255, 255, 255, 0.44)",
+    backgroundColor: colors.effects.surfaceGlow,
     borderRadius: 54,
     height: 108,
     left: 18,
@@ -204,14 +204,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   shakeText: {
-    color: "#103747",
+    color: colors.text,
     fontSize: 44,
     fontWeight: "900",
     letterSpacing: 0,
     lineHeight: 62,
   },
   processingText: {
-    color: "rgba(16, 55, 71, 0.68)",
+    color: colors.effects.textSubtle,
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 0,

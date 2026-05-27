@@ -196,11 +196,13 @@ export default function ProfileExperienceCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
     elevation: 3,
     minHeight: 128,
     padding: 14,
-    shadowColor: "#000000",
+    shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
       height: 5,
@@ -242,7 +244,7 @@ const styles = StyleSheet.create({
     width: 28,
   },
   address: {
-    color: colors.mutedText,
+    color: colors.secondaryText,
     fontSize: 12,
     lineHeight: 16,
     marginTop: 6,
@@ -281,7 +283,7 @@ const styles = StyleSheet.create({
   },
   moreAvatar: {
     alignItems: "center",
-    backgroundColor: "#8A8A8A",
+    backgroundColor: colors.iconMuted,
     justifyContent: "center",
   },
   moreAvatarText: {
@@ -300,7 +302,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
   },
   detailsButtonText: {
-    color: colors.surface,
+    color: colors.iconActive,
     fontSize: 8,
     fontWeight: "900",
     letterSpacing: 0,

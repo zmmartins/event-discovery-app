@@ -185,13 +185,15 @@ export default function EventCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
     elevation: 3,
     flexDirection: "row",
     height: 216,
     minHeight: 216,
     padding: 10,
-    shadowColor: "#000000",
+    shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
       height: 5,
@@ -232,7 +234,7 @@ const styles = StyleSheet.create({
     width: 24,
   },
   address: {
-    color: colors.mutedText,
+    color: colors.secondaryText,
     fontSize: 11,
     lineHeight: 15,
     marginTop: 2,
@@ -271,7 +273,7 @@ const styles = StyleSheet.create({
   },
   moreAvatar: {
     alignItems: "center",
-    backgroundColor: "#8A8A8A",
+    backgroundColor: colors.iconMuted,
     justifyContent: "center",
   },
   moreAvatarText: {
@@ -290,7 +292,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   detailsButtonText: {
-    color: colors.surface,
+    color: colors.iconActive,
     fontSize: 8,
     fontWeight: "900",
     letterSpacing: 0,

@@ -492,7 +492,7 @@ export default function EventDetailScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ScreenStatusBar variant="lightBackground" />
-        <Text>Evento não encontrado ou a carregar...</Text>
+        <Text style={styles.loadingText}>Evento não encontrado ou a carregar...</Text>
       </View>
     );
   }
@@ -664,6 +664,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
   },
+  loadingText: {
+    color: colors.secondaryText,
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   heroImage: {
     height: "66%",
     left: 0,
@@ -675,13 +681,13 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.88)",
+    backgroundColor: colors.effects.surfaceRaised,
     borderRadius: 22,
     height: BACK_BUTTON_SIZE,
     justifyContent: "center",
     left: 16,
     position: "absolute",
-    shadowColor: "#000000",
+    shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
       height: 4,
@@ -693,6 +699,8 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
     borderTopLeftRadius: 34,
     borderTopRightRadius: 34,
     bottom: 0,
@@ -701,7 +709,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "absolute",
     right: 0,
-    shadowColor: "#000000",
+    shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
       height: -8,
@@ -737,7 +745,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   title: {
-    color: "#2E2E2E",
+    color: colors.text,
     flex: 1,
     fontSize: 26,
     fontWeight: "900",
@@ -772,29 +780,29 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   sectionTitle: {
-    color: "#2E2E2E",
+    color: colors.text,
     fontSize: 18,
     fontWeight: "900",
     marginBottom: 12,
   },
   description: {
-    color: colors.mutedText,
+    color: colors.secondaryText,
     fontSize: 15,
     lineHeight: 23,
   },
   locationText: {
-    color: colors.mutedText,
+    color: colors.secondaryText,
     fontSize: 15,
     marginBottom: 12,
   },
   mapPreview: {
-    backgroundColor: "#DDE1E1",
+    backgroundColor: colors.softSurface,
     borderRadius: 10,
     height: 180,
     overflow: "hidden",
   },
   mapRoad: {
-    backgroundColor: "rgba(255, 255, 255, 0.86)",
+    backgroundColor: colors.effects.surfaceOverlay,
     borderRadius: 3,
     height: 5,
     position: "absolute",
@@ -821,7 +829,7 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "74deg" }],
   },
   mapLabel: {
-    color: "#8B9294",
+    color: colors.mutedText,
     fontSize: 8,
     fontWeight: "700",
     position: "absolute",
@@ -847,7 +855,7 @@ const styles = StyleSheet.create({
     top: "53%",
   },
   eyebrow: {
-    color: colors.mutedText,
+    color: colors.secondaryText,
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 0,
@@ -892,7 +900,9 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   reviewsPanel: {
-    backgroundColor: "#EFEFEF",
+    backgroundColor: colors.softSurface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
     gap: 12,
     padding: 14,
@@ -900,13 +910,15 @@ const styles = StyleSheet.create({
   reviewCard: {
     alignItems: "center",
     backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 8,
     flexDirection: "row",
     minHeight: 54,
     paddingHorizontal: 12,
   },
   reviewText: {
-    color: colors.mutedText,
+    color: colors.secondaryText,
     flex: 1,
     fontSize: 13,
     lineHeight: 16,
@@ -927,6 +939,8 @@ const styles = StyleSheet.create({
   },
   ctaBar: {
     backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
     borderTopLeftRadius: 34,
     borderTopRightRadius: 34,
     borderBottomLeftRadius: 34,
@@ -937,7 +951,7 @@ const styles = StyleSheet.create({
     paddingVertical: CTA_VERTICAL_PADDING,
     position: "absolute",
     right: 10,
-    shadowColor: "#000000",
+    shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
       height: -7,
@@ -960,7 +974,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   ctaButtonJoined: {
-    backgroundColor: "rgba(57, 245, 122, 0.72)",
+    backgroundColor: colors.effects.primaryDisabled,
   },
   ctaButtonText: {
     color: colors.text,
