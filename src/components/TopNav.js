@@ -4,6 +4,10 @@ import { usePathname, useRouter } from "expo-router";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { colors } from "../theme/colors";
+import {
+  LOG_ACTIONS,
+  logInteraction,
+} from "../services/interactionLogService";
 
 const topItems = [
   {
@@ -90,8 +94,23 @@ function TopNavButton({ item }) {
   const isActive = item.route && pathname === item.route;
 
   function handlePress() {
-    if (!item.route) return;
+    if (!item.route) {
+      logInteraction(LOG_ACTIONS.filterOpened, {
+        route: pathname,
+        screen: "TopNav",
+        source: "top_nav",
+      }).catch(() => null);
+      return;
+    }
+
     if (isActive) return;
+    logInteraction(LOG_ACTIONS.topNavSelected, {
+      fromRoute: pathname,
+      route: pathname,
+      screen: "TopNav",
+      source: "top_nav",
+      targetRoute: item.route,
+    }).catch(() => null);
     router.replace(item.route);
   }
 

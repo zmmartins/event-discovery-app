@@ -1,7 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import * as Haptics from "expo-haptics";
+import { usePathname } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
+import { toggleSavedEvent } from "../services/eventService";
+import {
+  LOG_ACTIONS,
+  logInteraction,
+} from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 
 const thumbnailImages = {
@@ -50,9 +64,65 @@ function AttendeeStack({ attendees }) {
   );
 }
 
-export default function EventCard({ event, onOpen }) {
+export default function EventCard({
+  event,
+  onOpen,
+  onSavedChange,
+  screen = "EventCard",
+  source = "event_card",
+}) {
+  const pathname = usePathname();
+  const saveScale = useRef(new Animated.Value(1)).current;
   const [isSaved, setIsSaved] = useState(Boolean(event.isSaved));
   const price = event.price?.toUpperCase?.() ?? "";
+
+  useEffect(() => {
+    setIsSaved(Boolean(event.isSaved));
+  }, [event.id, event.isSaved]);
+
+  function animateSavePulse() {
+    saveScale.setValue(0.82);
+    Animated.spring(saveScale, {
+      damping: 8,
+      mass: 0.45,
+      stiffness: 320,
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  async function handleSavePress() {
+    const nextIsSaved = !isSaved;
+
+    setIsSaved(nextIsSaved);
+    animateSavePulse();
+    Haptics.selectionAsync().catch(() => null);
+
+    try {
+      const updatedEvent = await toggleSavedEvent(event.id);
+      setIsSaved(Boolean(updatedEvent?.isSaved));
+      onSavedChange?.(updatedEvent);
+      logInteraction(LOG_ACTIONS.eventBookmarkToggled, {
+        eventId: event.id,
+        isSaved: Boolean(updatedEvent?.isSaved),
+        route: pathname,
+        screen,
+        source,
+      }).catch(() => null);
+    } catch {
+      setIsSaved(!nextIsSaved);
+    }
+  }
+
+  function handleOpenPress() {
+    logInteraction(LOG_ACTIONS.eventCardPressed, {
+      eventId: event.id,
+      route: pathname,
+      screen,
+      source,
+    }).catch(() => null);
+    onOpen?.();
+  }
 
   return (
     <View style={styles.card}>
@@ -73,14 +143,16 @@ export default function EventCard({ event, onOpen }) {
             accessibilityRole="button"
             accessibilityState={{ selected: isSaved }}
             hitSlop={8}
-            onPress={() => setIsSaved((currentValue) => !currentValue)}
+            onPress={handleSavePress}
             style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
           >
-            <Ionicons
-              name="bookmark"
-              size={20}
-              color={isSaved ? colors.primary : colors.iconMuted}
-            />
+            <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+              <Ionicons
+                name="bookmark"
+                size={20}
+                color={isSaved ? colors.primary : colors.iconMuted}
+              />
+            </Animated.View>
           </Pressable>
         </View>
 
@@ -95,7 +167,7 @@ export default function EventCard({ event, onOpen }) {
           <Pressable
             accessibilityLabel={`Open details for ${event.title}`}
             accessibilityRole="button"
-            onPress={onOpen}
+            onPress={handleOpenPress}
             style={({ pressed }) => [
               styles.detailsButton,
               pressed && styles.pressed,

@@ -6,7 +6,7 @@ import { colors } from "../theme/colors";
 import TopNav from "./TopNav";
 
 const discoveryRoutes = ["/map", "/map/list", "/map/shake-discover"];
-const edgeToEdgeRoutes = ["/map/list"];
+const edgeToEdgeRoutes = ["/map", "/map/list"];
 
 function normalizePathname(pathname) {
   if (!pathname || pathname === "/") return "/";

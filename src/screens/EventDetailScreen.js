@@ -1,6 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  usePathname,
+  useRouter,
+} from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
@@ -16,8 +21,15 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ScreenStatusBar from "../components/ScreenStatusBar";
-import { getEventById, joinEvent } from "../services/eventService";
-import { logInteraction } from "../services/interactionLogService";
+import {
+  getEventById,
+  joinEvent,
+  toggleSavedEvent,
+} from "../services/eventService";
+import {
+  LOG_ACTIONS,
+  logInteraction,
+} from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 
 const thumbnailImages = {
@@ -55,6 +67,12 @@ const SHEET_HANDLE_TOP_PADDING = 10;
 const SHEET_HANDLE_BOTTOM_PADDING = 18;
 const DETAIL_DESCRIPTION =
   "Description of a very interesting event that will happen somewhere on the day of next month. All art enthusiasts are invited to this amazing annual event. The entry is free and we welcome you to stay as long as you want. Your only challenge will be that you won't want to leave.";
+
+function wait(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -192,6 +210,7 @@ export default function EventDetailScreen() {
   const { id } = useLocalSearchParams();
   const eventId = Array.isArray(id) ? id[0] : id;
   const router = useRouter();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [event, setEvent] = useState(null);
@@ -202,6 +221,8 @@ export default function EventDetailScreen() {
   const sheetStartY = useRef(0);
   const scrollOffsetY = useRef(0);
   const scrollViewRef = useRef(null);
+  const saveScale = useRef(new Animated.Value(1)).current;
+  const ctaScale = useRef(new Animated.Value(1)).current;
 
   const expandedY = 0;
   const ctaHeight = CTA_HEIGHT + CTA_BOTTOM_GAP;
@@ -232,6 +253,44 @@ export default function EventDetailScreen() {
     scrollOffsetY.current = 0;
     scrollViewRef.current?.scrollTo?.({ animated: false, y: 0 });
   }, []);
+
+  const animateSavePulse = useCallback(() => {
+    saveScale.setValue(0.82);
+    Animated.spring(saveScale, {
+      damping: 8,
+      mass: 0.45,
+      stiffness: 320,
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  }, [saveScale]);
+
+  const animateCtaPress = useCallback(() => {
+    Animated.sequence([
+      Animated.timing(ctaScale, {
+        duration: 70,
+        toValue: 0.96,
+        useNativeDriver: true,
+      }),
+      Animated.spring(ctaScale, {
+        damping: 9,
+        mass: 0.55,
+        stiffness: 260,
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [ctaScale]);
+
+  async function triggerDoubleHaptic() {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+      () => null,
+    );
+    await wait(95);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+      () => null,
+    );
+  }
 
   const animateSheetTo = useCallback(
     (destination) => {
@@ -361,28 +420,72 @@ export default function EventDetailScreen() {
       const selectedEvent = await getEventById(eventId);
       setEvent(selectedEvent);
       setIsSaved(Boolean(selectedEvent?.isSaved));
-
-      await logInteraction("event_detail_opened", {
-        eventId,
-        screen: "EventDetailScreen",
-      });
     }
 
     loadEvent();
   }, [eventId]);
 
-  async function handleJoin() {
-    if (!event) return;
+  useFocusEffect(
+    useCallback(() => {
+      if (!eventId) return undefined;
 
+      logInteraction(LOG_ACTIONS.eventDetailOpened, {
+        eventId,
+        route: pathname,
+        screen: "EventDetailScreen",
+      }).catch(() => null);
+
+      return undefined;
+    }, [eventId, pathname]),
+  );
+
+  async function handleJoin() {
+    if (!event || event.isJoined) return;
+
+    animateCtaPress();
+    triggerDoubleHaptic();
+    logInteraction(LOG_ACTIONS.participationClicked, {
+      eventId: event.id,
+      route: pathname,
+      screen: "EventDetailScreen",
+      source: "detail_cta",
+    }).catch(() => null);
     const updatedEvent = await joinEvent(event.id);
     setEvent(updatedEvent);
+    setIsSaved(Boolean(updatedEvent?.isSaved));
 
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    await logInteraction("participation_confirmed", {
+    logInteraction(LOG_ACTIONS.participationConfirmed, {
       eventId: event.id,
+      route: pathname,
       screen: "EventDetailScreen",
-    });
+      source: "detail_cta",
+      result: "joined",
+    }).catch(() => null);
+  }
+
+  async function handleSavePress() {
+    if (!event) return;
+
+    const nextIsSaved = !isSaved;
+
+    setIsSaved(nextIsSaved);
+    animateSavePulse();
+    Haptics.selectionAsync().catch(() => null);
+
+    try {
+      const updatedEvent = await toggleSavedEvent(event.id);
+      setEvent(updatedEvent);
+      setIsSaved(Boolean(updatedEvent?.isSaved));
+      logInteraction(LOG_ACTIONS.eventBookmarkToggled, {
+        eventId: event.id,
+        isSaved: Boolean(updatedEvent?.isSaved),
+        route: pathname,
+        screen: "EventDetailScreen",
+        source: "detail",
+      }).catch(() => null);
+    } catch {
+      setIsSaved(!nextIsSaved);
+    }
   }
 
   if (!event) {
@@ -463,17 +566,19 @@ export default function EventDetailScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSaved }}
                 hitSlop={8}
-                onPress={() => setIsSaved((currentValue) => !currentValue)}
+                onPress={handleSavePress}
                 style={({ pressed }) => [
                   styles.saveButton,
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons
-                  name="bookmark"
-                  size={28}
-                  color={isSaved ? colors.primary : colors.iconMuted}
-                />
+                <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+                  <Ionicons
+                    name="bookmark"
+                    size={28}
+                    color={isSaved ? colors.primary : colors.iconMuted}
+                  />
+                </Animated.View>
               </Pressable>
             </View>
 
@@ -524,16 +629,24 @@ export default function EventDetailScreen() {
         ]}
       >
         <Text style={styles.ctaPrice}>{price}</Text>
-        <Pressable
-          accessibilityLabel={event.isJoined ? "Already going" : "Join event"}
-          accessibilityRole="button"
-          onPress={handleJoin}
-          style={({ pressed }) => [styles.ctaButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.ctaButtonText}>
-            {event.isJoined ? "Going" : "I'm Going"}
-          </Text>
-        </Pressable>
+        <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
+          <Pressable
+            accessibilityLabel={event.isJoined ? "Already going" : "Join event"}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: event.isJoined }}
+            disabled={event.isJoined}
+            onPress={handleJoin}
+            style={({ pressed }) => [
+              styles.ctaButton,
+              event.isJoined && styles.ctaButtonJoined,
+              pressed && !event.isJoined && styles.pressed,
+            ]}
+          >
+            <Text style={styles.ctaButtonText}>
+              {event.isJoined ? "Going" : "I'm Going"}
+            </Text>
+          </Pressable>
+        </Animated.View>
       </View>
     </View>
   );
@@ -845,6 +958,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     minHeight: 52,
     justifyContent: "center",
+  },
+  ctaButtonJoined: {
+    backgroundColor: "rgba(57, 245, 122, 0.72)",
   },
   ctaButtonText: {
     color: colors.text,

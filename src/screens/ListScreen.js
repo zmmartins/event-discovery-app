@@ -1,10 +1,12 @@
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import EventCard from "../components/EventCard";
+import useInteractionLogger from "../hooks/useInteractionLogger";
 import { getEvents } from "../services/eventService";
+import { LOG_ACTIONS } from "../services/interactionLogService";
 
 const TOP_NAV_OFFSET = 8;
 const TOP_NAV_HEIGHT = 44;
@@ -16,6 +18,9 @@ export default function ListScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [events, setEvents] = useState([]);
+  useInteractionLogger(LOG_ACTIONS.listViewOpened, {
+    screen: "ListScreen",
+  });
 
   const contentStyle = [
     styles.content,
@@ -26,9 +31,21 @@ export default function ListScreen() {
     },
   ];
 
-  useEffect(() => {
-    getEvents().then(setEvents);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      getEvents().then((nextEvents) => {
+        if (isActive) {
+          setEvents(nextEvents);
+        }
+      });
+
+      return () => {
+        isActive = false;
+      };
+    }, []),
+  );
 
   return (
     <View style={styles.container}>
@@ -42,6 +59,15 @@ export default function ListScreen() {
         renderItem={({ item }) => (
           <EventCard
             event={item}
+            screen="ListScreen"
+            source="list"
+            onSavedChange={(updatedEvent) =>
+              setEvents((currentEvents) =>
+                currentEvents.map((event) =>
+                  event.id === updatedEvent.id ? updatedEvent : event,
+                ),
+              )
+            }
             onOpen={() =>
               router.push({
                 pathname: "/event/[id]",
