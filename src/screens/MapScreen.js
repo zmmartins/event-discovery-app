@@ -43,10 +43,54 @@ const BOTTOM_NAV_GAP = 12;
 const PREVIEW_HORIZONTAL_PADDING = 20;
 const PREVIEW_MAX_WIDTH = 380;
 const LOCATION_CENTER_ANIMATION_MS = 700;
+const USER_CENTER_TOLERANCE_METERS = 80;
 
 let hasAutoCenteredOnUserThisSession = false;
 let sessionLocationStatus = "idle";
 let sessionUserLocation = null;
+
+function toRadians(value) {
+  return (value * Math.PI) / 180;
+}
+
+function getCoordinateDistanceMeters(firstCoordinate, secondCoordinate) {
+  if (!firstCoordinate || !secondCoordinate) return Number.POSITIVE_INFINITY;
+
+  const earthRadiusMeters = 6371000;
+  const latitudeDelta = toRadians(
+    secondCoordinate.latitude - firstCoordinate.latitude,
+  );
+  const longitudeDelta = toRadians(
+    secondCoordinate.longitude - firstCoordinate.longitude,
+  );
+  const firstLatitude = toRadians(firstCoordinate.latitude);
+  const secondLatitude = toRadians(secondCoordinate.latitude);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(firstLatitude) *
+      Math.cos(secondLatitude) *
+      Math.sin(longitudeDelta / 2) ** 2;
+
+  return (
+    earthRadiusMeters *
+    2 *
+    Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+  );
+}
+
+function isRegionCenteredOnCoordinate(region, coordinate) {
+  if (!region || !coordinate) return false;
+
+  return (
+    getCoordinateDistanceMeters(
+      {
+        latitude: region.latitude,
+        longitude: region.longitude,
+      },
+      coordinate,
+    ) <= USER_CENTER_TOLERANCE_METERS
+  );
+}
 
 function CurrentLocationMarker() {
   return (
@@ -66,21 +110,28 @@ function getLocationStatusLabel(status) {
   return "LISBON";
 }
 
-function LocationStatusIndicator({ onPress, status, top }) {
+function LocationStatusIndicator({
+  isCenteredOnUser,
+  onPress,
+  status,
+  top,
+}) {
   const isAvailable = status === "available";
   const isLocating = status === "locating";
+  const isActive = isAvailable && isCenteredOnUser;
 
   return (
     <Pressable
       accessibilityHint="Centers the map on your current location"
       accessibilityLabel="Recenter map to your location"
       accessibilityRole="button"
-      accessibilityState={{ disabled: isLocating }}
+      accessibilityState={{ disabled: isLocating, selected: isActive }}
       disabled={isLocating}
       onPress={onPress}
       style={[
         styles.locationStatus,
-        isAvailable && styles.locationStatusAvailable,
+        isActive && styles.locationStatusActive,
+        isAvailable && !isActive && styles.locationStatusInactive,
         isLocating && styles.locationStatusDisabled,
         { top },
       ]}
@@ -88,12 +139,12 @@ function LocationStatusIndicator({ onPress, status, top }) {
       <Ionicons
         name={isLocating ? "radio-outline" : "location"}
         size={14}
-        color={isAvailable ? colors.iconActive : colors.iconMuted}
+        color={isActive ? colors.iconActive : colors.iconMuted}
       />
       <Text
         style={[
           styles.locationStatusText,
-          isAvailable && styles.locationStatusTextAvailable,
+          isActive && styles.locationStatusTextActive,
         ]}
       >
         {getLocationStatusLabel(status)}
@@ -108,6 +159,7 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef(null);
   const isMapReadyRef = useRef(false);
+  const isRecenteringOnUserRef = useRef(false);
   const currentRegionRef = useRef(LISBON_REGION);
   const pendingInitialLocationRegionRef = useRef(null);
   const previewAnimation = useRef(new Animated.Value(0)).current;
@@ -115,6 +167,7 @@ export default function MapScreen() {
   const [locationStatus, setLocationStatus] = useState(
     sessionLocationStatus === "idle" ? "locating" : sessionLocationStatus,
   );
+  const [isMapCenteredOnUser, setIsMapCenteredOnUser] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [userLocation, setUserLocation] = useState(sessionUserLocation);
   const {
@@ -167,6 +220,15 @@ export default function MapScreen() {
     [centerMapOnRegion],
   );
 
+  const centerMapOnUser = useCallback(
+    (coordinate, duration = LOCATION_CENTER_ANIMATION_MS) => {
+      isRecenteringOnUserRef.current = true;
+      setIsMapCenteredOnUser(true);
+      centerMapOnCoordinate(coordinate, duration);
+    },
+    [centerMapOnCoordinate],
+  );
+
   const applyLocationResult = useCallback((result, shouldCenter) => {
     if (result.status === "available" && result.coordinate) {
       sessionUserLocation = result.coordinate;
@@ -175,7 +237,11 @@ export default function MapScreen() {
       setLocationStatus("available");
 
       if (shouldCenter) {
-        centerMapOnCoordinate(result.coordinate);
+        centerMapOnUser(result.coordinate);
+      } else {
+        setIsMapCenteredOnUser(
+          isRegionCenteredOnCoordinate(currentRegionRef.current, result.coordinate),
+        );
       }
 
       return;
@@ -183,8 +249,10 @@ export default function MapScreen() {
 
     sessionLocationStatus =
       result.status === "denied" ? "denied" : "unavailable";
+    isRecenteringOnUserRef.current = false;
     setLocationStatus(sessionLocationStatus);
-  }, [centerMapOnCoordinate]);
+    setIsMapCenteredOnUser(false);
+  }, [centerMapOnUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -211,6 +279,14 @@ export default function MapScreen() {
       if (hasAutoCenteredOnUserThisSession) {
         if (sessionUserLocation) {
           setUserLocation(sessionUserLocation);
+          setIsMapCenteredOnUser(
+            isRegionCenteredOnCoordinate(
+              currentRegionRef.current,
+              sessionUserLocation,
+            ),
+          );
+        } else {
+          setIsMapCenteredOnUser(false);
         }
         if (sessionLocationStatus !== "idle") {
           setLocationStatus(sessionLocationStatus);
@@ -278,7 +354,18 @@ export default function MapScreen() {
 
   const handleRegionChangeComplete = useCallback((region) => {
     currentRegionRef.current = region;
-  }, []);
+    const isCenteredOnUser = isRegionCenteredOnCoordinate(region, userLocation);
+
+    if (isCenteredOnUser) {
+      isRecenteringOnUserRef.current = false;
+      setIsMapCenteredOnUser(true);
+      return;
+    }
+
+    if (!isRecenteringOnUserRef.current) {
+      setIsMapCenteredOnUser(false);
+    }
+  }, [userLocation]);
 
   const handleMapReady = useCallback(() => {
     isMapReadyRef.current = true;
@@ -299,6 +386,9 @@ export default function MapScreen() {
   }, [closePreview, selectedEvent]);
 
   const handleMapPanDrag = useCallback(() => {
+    isRecenteringOnUserRef.current = false;
+    setIsMapCenteredOnUser(false);
+
     if (selectedEvent) {
       closePreview("map_pan");
     }
@@ -308,7 +398,9 @@ export default function MapScreen() {
     (event) => {
       const currentRegion = currentRegionRef.current || LISBON_REGION;
 
+      isRecenteringOnUserRef.current = false;
       setSelectedEvent(event);
+      setIsMapCenteredOnUser(isRegionCenteredOnCoordinate(event, userLocation));
       animatePreviewIn();
 
       mapRef.current?.animateToRegion(
@@ -329,7 +421,7 @@ export default function MapScreen() {
         source: "map_pin",
       }).catch(() => null);
     },
-    [animatePreviewIn, pathname],
+    [animatePreviewIn, pathname, userLocation],
   );
 
   const handleMarkerPress = useCallback(
@@ -377,12 +469,14 @@ export default function MapScreen() {
     }).catch(() => null);
 
     if (userLocation) {
-      centerMapOnCoordinate(userLocation);
+      centerMapOnUser(userLocation);
       return;
     }
 
+    isRecenteringOnUserRef.current = false;
     sessionLocationStatus = "locating";
     setLocationStatus("locating");
+    setIsMapCenteredOnUser(false);
 
     getForegroundUserLocation({
       route: pathname,
@@ -391,7 +485,7 @@ export default function MapScreen() {
     }).then((result) => {
       applyLocationResult(result, true);
     });
-  }, [applyLocationResult, centerMapOnCoordinate, pathname, userLocation]);
+  }, [applyLocationResult, centerMapOnUser, pathname, userLocation]);
 
   return (
     <View style={styles.container}>
@@ -447,6 +541,7 @@ export default function MapScreen() {
       </MapView>
 
       <LocationStatusIndicator
+        isCenteredOnUser={isMapCenteredOnUser}
         onPress={handleLocationStatusPress}
         status={locationStatus}
         top={insets.top + 64}
@@ -454,7 +549,18 @@ export default function MapScreen() {
 
       {isDiscoveryActive && (
         <>
-          <View pointerEvents="none" style={styles.discoverBorder} />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.discoverBorder,
+              {
+                bottom: insets.bottom,
+                left: insets.left,
+                right: insets.right,
+                top: insets.top,
+              },
+            ]}
+          />
           <DiscoverModePill
             onPress={handleDiscoverDismiss}
             style={[styles.discoverPill, { top: insets.top + 62 }]}
@@ -549,9 +655,12 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     zIndex: 1,
   },
-  locationStatusAvailable: {
+  locationStatusActive: {
     backgroundColor: colors.primary,
     borderColor: colors.effects.surfaceStrongBorder,
+  },
+  locationStatusInactive: {
+    opacity: 0.78,
   },
   locationStatusDisabled: {
     opacity: 0.78,
@@ -562,7 +671,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0,
   },
-  locationStatusTextAvailable: {
+  locationStatusTextActive: {
     color: colors.text,
   },
   userLocationMarker: {

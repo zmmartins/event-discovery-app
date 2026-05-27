@@ -9,7 +9,12 @@ export const APP_MAP_STYLE = [
   {
     featureType: "all",
     elementType: "labels",
-    stylers: [{ visibility: "on" }],
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "all",
+    elementType: "labels.icon",
+    stylers: [{ visibility: "off" }],
   },
   {
     featureType: "administrative",
@@ -28,13 +33,33 @@ export const APP_MAP_STYLE = [
   },
   {
     featureType: "administrative.locality",
+    elementType: "labels",
+    stylers: [{ visibility: "on" }],
+  },
+  {
+    featureType: "administrative.locality",
     elementType: "labels.text.fill",
     stylers: [{ color: colors.text }, { weight: "2.00" }],
+  },
+  {
+    featureType: "administrative.locality",
+    elementType: "labels.icon",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "administrative.neighborhood",
+    elementType: "labels",
+    stylers: [{ visibility: "on" }],
   },
   {
     featureType: "administrative.neighborhood",
     elementType: "labels.text.fill",
     stylers: [{ color: colors.secondaryText }],
+  },
+  {
+    featureType: "administrative.neighborhood",
+    elementType: "labels.icon",
+    stylers: [{ visibility: "off" }],
   },
   {
     featureType: "landscape",
@@ -48,7 +73,27 @@ export const APP_MAP_STYLE = [
   },
   {
     featureType: "poi",
+    elementType: "all",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "poi",
     elementType: "geometry.fill",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "poi",
+    elementType: "labels",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "poi",
+    elementType: "labels.icon",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "poi.business",
+    elementType: "all",
     stylers: [{ visibility: "off" }],
   },
   {
@@ -58,8 +103,23 @@ export const APP_MAP_STYLE = [
   },
   {
     featureType: "road",
+    elementType: "labels",
+    stylers: [{ visibility: "on" }],
+  },
+  {
+    featureType: "road",
     elementType: "geometry.fill",
     stylers: [{ weight: "0.50" }],
+  },
+  {
+    featureType: "road",
+    elementType: "labels.icon",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "road",
+    elementType: "labels.text.fill",
+    stylers: [{ color: colors.secondaryText }],
   },
   {
     featureType: "road",
@@ -119,6 +179,11 @@ export const APP_MAP_STYLE = [
   {
     featureType: "transit.station",
     elementType: "geometry.fill",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "transit",
+    elementType: "labels",
     stylers: [{ visibility: "off" }],
   },
   {
