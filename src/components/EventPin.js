@@ -1,60 +1,42 @@
 import { Image, StyleSheet, View } from "react-native";
 
 import { colors } from "../theme/colors";
+import { getAvatarImage, getEventImage } from "../utils/imageAssets";
 
-const PIN_SIZE = 82;
-const PIN_BORDER_WIDTH = 6;
-const TAIL_HEIGHT = 42;
-const TAIL_WIDTH = 26;
-const AVATAR_SIZE = 32;
-const AVATAR_BORDER_WIDTH = 3;
-const MIN_CLOUD_RADIUS = 54;
-const MAX_CLOUD_RADIUS = 76;
+const PIN_SIZE = 60;
+const PIN_BORDER_WIDTH = 2;
+const PIN_IMAGE_SIZE = PIN_SIZE - PIN_BORDER_WIDTH * 2;
+const TAIL_HEIGHT = 5;
+const TAIL_WIDTH = 12;
+const AVATAR_SIZE = 18;
+const AVATAR_BORDER_WIDTH = 2;
+const MIN_PARTICLE_RINGS = 1;
+const MAX_PARTICLE_RINGS = 5;
+const FIRST_RING_RADIUS = PIN_SIZE / 2 + 7;
+const RING_GAP = 6;
+const INNER_PARTICLE_SIZE = 5.5;
+const OUTER_PARTICLE_SIZE = 2.8;
+const INNER_PARTICLE_OPACITY = 0.92;
+const OUTER_PARTICLE_OPACITY = 0.42;
 
-const avatarMap = {
-  ana: require("../assets/avatars/ana.png"),
-  clara: require("../assets/avatars/clara.png"),
-  ines: require("../assets/avatars/ines.png"),
-  joao: require("../assets/avatars/joao.png"),
-  miguel: require("../assets/avatars/miguel.png"),
-  rita: require("../assets/avatars/rita.png"),
+export const EVENT_PIN_METRICS = {
+  circleSize: PIN_SIZE,
+  imageSize: PIN_IMAGE_SIZE,
+  tailHeight: TAIL_HEIGHT,
+  tailWidth: TAIL_WIDTH,
+  visualHeight: PIN_SIZE + TAIL_HEIGHT,
+  visualWidth: PIN_SIZE,
 };
 
-const eventMap = {
-  "art-gallery": require("../assets/events/art-gallery.png"),
-  "film-night": require("../assets/events/film-night.png"),
-  "rooftop-jazz": require("../assets/events/rooftop-jazz.png"),
-};
-
-const avatarPositions = [
-  { x: -34, y: -24 },
-  { x: 34, y: -25 },
-  { x: 46, y: 12 },
-  { x: -42, y: 24 },
-];
-
-const particleLayers = [
-  { count: 26, size: 10, opacity: 0.92 },
-  { count: 34, size: 7, opacity: 0.68 },
-  { count: 42, size: 4, opacity: 0.44 },
-];
-
-const discoverParticleLayers = [
-  { count: 34, size: 7, opacity: 0.94 },
-  { count: 44, size: 5, opacity: 0.72 },
-  { count: 58, size: 3, opacity: 0.52 },
+export const EVENT_PIN_AVATAR_POSITIONS = [
+  { x: -22, y: -17 },
+  { x: 22, y: -17 },
+  { x: 25, y: 8 },
+  { x: -25, y: 10 },
 ];
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
-}
-
-function getEventImage(key) {
-  return eventMap[key] || eventMap["art-gallery"];
-}
-
-function getAvatarImage(key) {
-  return avatarMap[key] || avatarMap.ana;
 }
 
 function hashString(value) {
@@ -65,57 +47,103 @@ function hashString(value) {
     }, 11);
 }
 
-function getCloudRadius(popularity) {
+function getParticleRingCount(popularity) {
   const normalizedPopularity = clamp(Number(popularity) || 0, 0, 100);
-  const popularityRatio = normalizedPopularity / 100;
+  const ringCount = Math.ceil((normalizedPopularity / 100) * MAX_PARTICLE_RINGS);
 
-  return MIN_CLOUD_RADIUS + (MAX_CLOUD_RADIUS - MIN_CLOUD_RADIUS) * popularityRatio;
+  return clamp(ringCount, MIN_PARTICLE_RINGS, MAX_PARTICLE_RINGS);
 }
 
-function createParticles(eventId, cloudRadius, isDiscoverMode = false) {
+export function getEventPinLayout(event = {}) {
+  const ringCount = getParticleRingCount(event.popularity);
+  const ringGap = RING_GAP;
+  const firstRingRadius = FIRST_RING_RADIUS;
+  const outerRingRadius = firstRingRadius + ringGap * (ringCount - 1);
+  const contentRadius = Math.ceil(outerRingRadius + 6);
+  const containerSize = contentRadius * 2;
+  const circleOffset = contentRadius - PIN_SIZE / 2;
+  const tailTop = circleOffset + PIN_SIZE;
+  const tailTipY = tailTop + TAIL_HEIGHT;
+  const containerHeight = Math.max(containerSize, tailTipY);
+
+  return {
+    circleOffset,
+    containerHeight,
+    containerSize,
+    contentRadius,
+    firstRingRadius,
+    ringCount,
+    ringGap,
+    tailTipY,
+    tailTop,
+  };
+}
+
+export function getEventPinMarkerAnchor(event) {
+  const layout = getEventPinLayout(event);
+
+  return {
+    x: 0.5,
+    y: layout.tailTipY / layout.containerHeight,
+  };
+}
+
+export function getEventPinParticles(eventId, layout, isDiscoverMode = false) {
   const seed = hashString(eventId);
   const particles = [];
-  const layers = isDiscoverMode ? discoverParticleLayers : particleLayers;
-  const innerRadius = PIN_SIZE / 2 + 8;
-  const radiusStep = (cloudRadius - innerRadius) / (layers.length - 1);
 
-  layers.forEach((layer, layerIndex) => {
-    const layerRadius = innerRadius + radiusStep * layerIndex;
+  for (let ringIndex = 0; ringIndex < layout.ringCount; ringIndex += 1) {
+    const ringRadius = layout.firstRingRadius + layout.ringGap * ringIndex;
+    const dotCount = 14 + ringIndex * 5;
+    const ringProgress =
+      MAX_PARTICLE_RINGS === 1 ? 0 : ringIndex / (MAX_PARTICLE_RINGS - 1);
+    const angleOffset =
+      ((seed % 360) * Math.PI) / 180 + ringIndex * (isDiscoverMode ? 0.24 : 0.18);
+    const dotSize = clamp(
+      INNER_PARTICLE_SIZE -
+        (INNER_PARTICLE_SIZE - OUTER_PARTICLE_SIZE) * ringProgress,
+      OUTER_PARTICLE_SIZE,
+      INNER_PARTICLE_SIZE,
+    );
+    const opacity = clamp(
+      INNER_PARTICLE_OPACITY -
+        (INNER_PARTICLE_OPACITY - OUTER_PARTICLE_OPACITY) * ringProgress +
+        (isDiscoverMode ? 0.04 : 0),
+      OUTER_PARTICLE_OPACITY,
+      0.96,
+    );
 
-    for (let index = 0; index < layer.count; index += 1) {
-      const angle =
-        (Math.PI * 2 * index) / layer.count +
-        (seed % 360) * 0.004 +
-        layerIndex * 0.22;
-      const wave = Math.sin(seed * 0.17 + index * 1.7 + layerIndex);
-      const radius = layerRadius + wave * (layer.size * 0.45);
-      const dotSize = Math.max(3, layer.size + ((seed + index) % 3) - 1);
+    for (let index = 0; index < dotCount; index += 1) {
+      const angle = (Math.PI * 2 * index) / dotCount + angleOffset;
 
       particles.push({
-        id: `${layerIndex}-${index}`,
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
-        opacity: layer.opacity,
+        id: `${ringIndex}-${index}`,
+        opacity,
         size: dotSize,
+        x: Math.cos(angle) * ringRadius,
+        y: Math.sin(angle) * ringRadius,
       });
     }
-  });
+  }
 
   return particles;
 }
 
-export default function EventPin({ event, isDiscoverMode = false }) {
-  const { attendingFriends = [], id, popularity = 0, thumbnailKey } = event;
-  const cloudRadius = isDiscoverMode
-    ? Math.max(getCloudRadius(popularity), 86)
-    : getCloudRadius(popularity);
-  const contentRadius = Math.max(cloudRadius, 58);
-  const containerSize = contentRadius * 2;
-  const particles = createParticles(id, cloudRadius, isDiscoverMode);
+export default function EventPin({
+  centerImageAccessibilityLabel,
+  centerImageSource,
+  event = {},
+  isDiscoverMode = false,
+}) {
+  const {
+    attendingFriends = [],
+    id,
+    thumbnailKey,
+    title = "Event",
+  } = event;
+  const layout = getEventPinLayout(event);
+  const particles = getEventPinParticles(id, layout, isDiscoverMode);
   const avatars = attendingFriends.slice(0, 4);
-  const circleOffset = contentRadius - PIN_SIZE / 2;
-  const tailTop = circleOffset + PIN_SIZE - 2;
-  const tailTipY = tailTop + TAIL_HEIGHT;
 
   return (
     <View
@@ -123,8 +151,8 @@ export default function EventPin({ event, isDiscoverMode = false }) {
       style={[
         styles.container,
         {
-          height: tailTipY,
-          width: containerSize,
+          height: layout.containerHeight,
+          width: layout.containerSize,
         },
       ]}
     >
@@ -132,8 +160,8 @@ export default function EventPin({ event, isDiscoverMode = false }) {
         style={[
           styles.cloud,
           {
-            height: containerSize,
-            width: containerSize,
+            height: layout.containerSize,
+            width: layout.containerSize,
           },
         ]}
       >
@@ -146,9 +174,9 @@ export default function EventPin({ event, isDiscoverMode = false }) {
               {
                 borderRadius: particle.size / 2,
                 height: particle.size,
-                left: contentRadius + particle.x - particle.size / 2,
+                left: layout.contentRadius + particle.x - particle.size / 2,
                 opacity: particle.opacity,
-                top: contentRadius + particle.y - particle.size / 2,
+                top: layout.contentRadius + particle.y - particle.size / 2,
                 width: particle.size,
               },
             ]}
@@ -160,18 +188,19 @@ export default function EventPin({ event, isDiscoverMode = false }) {
         style={[
           styles.pin,
           {
-            left: circleOffset,
-            top: circleOffset,
+            left: layout.circleOffset,
+            top: layout.circleOffset,
           },
         ]}
       >
         <Image
-          source={getEventImage(thumbnailKey)}
+          accessibilityLabel={centerImageAccessibilityLabel ?? `${title} thumbnail`}
+          source={centerImageSource ?? getEventImage(thumbnailKey)}
           style={styles.thumbnail}
         />
 
         {avatars.map((avatar, index) => {
-          const position = avatarPositions[index];
+          const position = EVENT_PIN_AVATAR_POSITIONS[index];
 
           return (
             <View
@@ -198,8 +227,8 @@ export default function EventPin({ event, isDiscoverMode = false }) {
         style={[
           styles.tail,
           {
-            left: contentRadius - TAIL_WIDTH / 2,
-            top: tailTop,
+            left: layout.contentRadius - TAIL_WIDTH / 2,
+            top: layout.tailTop,
           },
         ]}
       />
@@ -227,18 +256,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: colors.primary,
     borderRadius: PIN_SIZE / 2,
+    elevation: 5,
     height: PIN_SIZE,
     justifyContent: "center",
     overflow: "visible",
     position: "absolute",
+    shadowColor: colors.effects.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 5,
+    },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
     width: PIN_SIZE,
     zIndex: 2,
   },
   thumbnail: {
-    borderRadius: (PIN_SIZE - PIN_BORDER_WIDTH * 2) / 2,
-    height: PIN_SIZE - PIN_BORDER_WIDTH * 2,
+    borderRadius: PIN_IMAGE_SIZE / 2,
+    height: PIN_IMAGE_SIZE,
     resizeMode: "cover",
-    width: PIN_SIZE - PIN_BORDER_WIDTH * 2,
+    width: PIN_IMAGE_SIZE,
   },
   avatarWrap: {
     alignItems: "center",

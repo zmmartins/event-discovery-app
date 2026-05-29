@@ -178,21 +178,49 @@ Do not use React Navigation's `navigation.navigate(...)` inside screens unless t
 
 ```
 event-discovery-app/
-  App.js
+  app.config.js
+  app.json
+  package.json
+  tsconfig.json
+  expo-env.d.ts
+  list_project_structure.py
+  README.md
   app/
     _layout.tsx
-    index.tsx
-    list.tsx
-    map.tsx
-    profile.tsx
+    (tabs)/
+      _layout.tsx
+      community.tsx
+      index.tsx
+      list.tsx
+      messages.tsx
+      notifications.tsx
+      profile.tsx
+      search.tsx
+      shake-discover.tsx
+      map/
+        _layout.tsx
+        index.tsx
+        list.tsx
+        notifications.tsx
+        shake-discover.tsx
     event/
       [id].tsx
-  index.js
   src/
     assets/
+      avatars/
+      events/
     components/
+      AppShell.js
+      DiscoverModePill.js
       EventCard.js
       EventPin.js
+      ExperiencePin.js
+      PlaceholderScreen.js
+      ProfileExperienceCard.js
+      ScreenStatusBar.js
+      TopNav.js
+    context/
+      DiscoveryModeContext.js
     data/
       mockEvents.js
       mockUsers.js
@@ -200,18 +228,27 @@ event-discovery-app/
       useInteractionLogger.js
       useShakeToDiscover.js
     screens/
+      CommunityScreen.js
       EventDetailScreen.js
       ListScreen.js
       MapScreen.js
+      MessagesScreen.js
+      NotificationsScreen.js
       ProfileScreen.js
+      SearchScreen.js
+      ShakeDiscoverScreen.js
     services/
       eventService.js
       interactionLogService.js
+      locationService.js
+      profileService.js
       userService.js
     theme/
       colors.js
+      mapStyle.js
       spacing.js
     utils/
+      imageAssets.js
 ```
 
 ---

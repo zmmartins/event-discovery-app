@@ -37,6 +37,7 @@ function createStats(user, experiences) {
 
 function createMapPin(experience) {
   return {
+    event: experience.event,
     eventId: experience.event.id,
     experienceId: experience.id,
     id: `pin-${experience.id}`,

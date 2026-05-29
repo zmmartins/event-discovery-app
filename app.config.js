@@ -14,14 +14,13 @@ function withLocationPermissionConfig(config) {
       NSLocationWhenInUseUsageDescription: LOCATION_PERMISSION_MESSAGE,
     },
   };
+
   const currentAndroidPermissions = config.android?.permissions ?? [];
+
   const android = {
     ...config.android,
     permissions: [
-      ...new Set([
-        ...currentAndroidPermissions,
-        ...ANDROID_LOCATION_PERMISSIONS,
-      ]),
+      ...new Set([...currentAndroidPermissions, ...ANDROID_LOCATION_PERMISSIONS]),
     ],
   };
 
@@ -37,6 +36,7 @@ function withGoogleMapsConfig(config) {
     ...config.ios,
     bundleIdentifier: APP_IDENTIFIER,
   };
+
   const android = {
     ...config.android,
     package: APP_IDENTIFIER,
@@ -66,5 +66,16 @@ function withGoogleMapsConfig(config) {
   };
 }
 
+function withExpoFontPlugin(config) {
+  const currentPlugins = config.plugins ?? [];
+
+  return {
+    ...config,
+    plugins: currentPlugins.includes("expo-font")
+      ? currentPlugins
+      : [...currentPlugins, "expo-font"],
+  };
+}
+
 module.exports = ({ config }) =>
-  withGoogleMapsConfig(withLocationPermissionConfig(config));
+  withGoogleMapsConfig(withLocationPermissionConfig(withExpoFontPlugin(config)));

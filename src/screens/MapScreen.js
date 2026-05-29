@@ -1,28 +1,29 @@
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Animated,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import DiscoverModePill from "../components/DiscoverModePill";
-import EventCard from "../components/EventCard";
-import EventPin from "../components/EventPin";
+import EventPin, {
+  EVENT_PIN_METRICS,
+  getEventPinLayout,
+  getEventPinMarkerAnchor,
+} from "../components/EventPin";
+import MorphingEventPreview from "../components/MorphingEventPreview";
 import { useDiscoveryMode } from "../context/DiscoveryModeContext";
 import useInteractionLogger from "../hooks/useInteractionLogger";
 import { getEvents } from "../services/eventService";
-import {
-  LOG_ACTIONS,
-  logInteraction,
-} from "../services/interactionLogService";
+import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { getForegroundUserLocation } from "../services/locationService";
 import { colors } from "../theme/colors";
 import { APP_MAP_STYLE } from "../theme/mapStyle";
@@ -34,20 +35,38 @@ const LISBON_REGION = {
   longitudeDelta: 0.06,
 };
 
-const MAP_CENTER_ANIMATION_MS = 360;
-const TOP_NAV_OFFSET = 8;
-const TOP_NAV_HEIGHT = 44;
-const PREVIEW_TOP_GAP = 16;
-const BOTTOM_NAV_HEIGHT = 64;
-const BOTTOM_NAV_GAP = 12;
 const PREVIEW_HORIZONTAL_PADDING = 20;
 const PREVIEW_MAX_WIDTH = 380;
+const PREVIEW_CARD_HEIGHT = 216;
 const LOCATION_CENTER_ANIMATION_MS = 700;
 const USER_CENTER_TOLERANCE_METERS = 80;
+const LOCATION_GLASS_COLOR_SCHEME = "light";
+const LOCATION_GLASS_TINT_COLOR = colors.effects.glassTint;
+
+// Custom react-native-maps markers are rendered as native snapshots.
+// Keep tracking enabled briefly after visual changes, then disable it again
+// for performance. This prevents random blank/disappearing custom markers.
+const MARKER_VIEW_TRACKING_MS = 900;
 
 let hasAutoCenteredOnUserThisSession = false;
 let sessionLocationStatus = "idle";
 let sessionUserLocation = null;
+
+function getLiquidGlassAvailable() {
+  if (Platform.OS !== "ios") return false;
+
+  try {
+    return isLiquidGlassAvailable();
+  } catch {
+    return false;
+  }
+}
+
+const liquidGlassAvailable = getLiquidGlassAvailable();
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
 
 function toRadians(value) {
   return (value * Math.PI) / 180;
@@ -57,11 +76,9 @@ function getCoordinateDistanceMeters(firstCoordinate, secondCoordinate) {
   if (!firstCoordinate || !secondCoordinate) return Number.POSITIVE_INFINITY;
 
   const earthRadiusMeters = 6371000;
-  const latitudeDelta = toRadians(
-    secondCoordinate.latitude - firstCoordinate.latitude,
-  );
+  const latitudeDelta = toRadians(secondCoordinate.latitude - firstCoordinate.latitude);
   const longitudeDelta = toRadians(
-    secondCoordinate.longitude - firstCoordinate.longitude,
+    secondCoordinate.longitude - firstCoordinate.longitude
   );
   const firstLatitude = toRadians(firstCoordinate.latitude);
   const secondLatitude = toRadians(secondCoordinate.latitude);
@@ -72,9 +89,7 @@ function getCoordinateDistanceMeters(firstCoordinate, secondCoordinate) {
       Math.sin(longitudeDelta / 2) ** 2;
 
   return (
-    earthRadiusMeters *
-    2 *
-    Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+    earthRadiusMeters * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
   );
 }
 
@@ -87,9 +102,43 @@ function isRegionCenteredOnCoordinate(region, coordinate) {
         latitude: region.latitude,
         longitude: region.longitude,
       },
-      coordinate,
+      coordinate
     ) <= USER_CENTER_TOLERANCE_METERS
   );
+}
+
+function getPreviewGeometry({ pinLayout, screenWidth, startPoint, tailTipPoint }) {
+  const tailHeight = EVENT_PIN_METRICS.tailHeight;
+  const tailWidth = EVENT_PIN_METRICS.tailWidth;
+  const previewHeight = PREVIEW_CARD_HEIGHT + tailHeight;
+  const previewWidth = Math.min(
+    PREVIEW_MAX_WIDTH,
+    screenWidth - PREVIEW_HORIZONTAL_PADDING * 2
+  );
+
+  const left = clamp(
+    tailTipPoint.x - previewWidth / 2,
+    PREVIEW_HORIZONTAL_PADDING,
+    screenWidth - PREVIEW_HORIZONTAL_PADDING - previewWidth
+  );
+
+  const top = tailTipPoint.y - PREVIEW_CARD_HEIGHT - tailHeight;
+
+  const tailLeft = tailTipPoint.x - left - tailWidth / 2;
+  const tailTop = PREVIEW_CARD_HEIGHT;
+
+  return {
+    cloneHeight: pinLayout.containerHeight,
+    cloneLeft: startPoint.x - pinLayout.containerSize / 2,
+    cloneTop: startPoint.y - pinLayout.tailTipY,
+    cloneWidth: pinLayout.containerSize,
+    height: previewHeight,
+    left,
+    tailLeft,
+    tailTop,
+    top,
+    width: previewWidth,
+  };
 }
 
 function CurrentLocationMarker() {
@@ -110,15 +159,32 @@ function getLocationStatusLabel(status) {
   return "LISBON";
 }
 
-function LocationStatusIndicator({
-  isCenteredOnUser,
-  onPress,
-  status,
-  top,
-}) {
+function LocationStatusIndicator({ isCenteredOnUser, onPress, status, top }) {
   const isAvailable = status === "available";
   const isLocating = status === "locating";
   const isActive = isAvailable && isCenteredOnUser;
+
+  const surfaceStyle = [
+    styles.locationStatusSurface,
+    isActive && styles.locationStatusActive,
+    isAvailable && !isActive && styles.locationStatusInactive,
+    isLocating && styles.locationStatusDisabled,
+  ];
+
+  const content = (
+    <>
+      <Ionicons
+        name={isLocating ? "radio-outline" : "location"}
+        size={14}
+        color={isActive ? colors.iconActive : colors.iconMuted}
+      />
+      <Text
+        style={[styles.locationStatusText, isActive && styles.locationStatusTextActive]}
+      >
+        {getLocationStatusLabel(status)}
+      </Text>
+    </>
+  );
 
   return (
     <Pressable
@@ -128,27 +194,25 @@ function LocationStatusIndicator({
       accessibilityState={{ disabled: isLocating, selected: isActive }}
       disabled={isLocating}
       onPress={onPress}
-      style={[
+      style={({ pressed }) => [
         styles.locationStatus,
-        isActive && styles.locationStatusActive,
-        isAvailable && !isActive && styles.locationStatusInactive,
-        isLocating && styles.locationStatusDisabled,
+        pressed && !isLocating && styles.pressed,
         { top },
       ]}
     >
-      <Ionicons
-        name={isLocating ? "radio-outline" : "location"}
-        size={14}
-        color={isActive ? colors.iconActive : colors.iconMuted}
-      />
-      <Text
-        style={[
-          styles.locationStatusText,
-          isActive && styles.locationStatusTextActive,
-        ]}
-      >
-        {getLocationStatusLabel(status)}
-      </Text>
+      {Platform.OS === "ios" && liquidGlassAvailable ? (
+        <GlassView
+          colorScheme={LOCATION_GLASS_COLOR_SCHEME}
+          glassEffectStyle="regular"
+          isInteractive={false}
+          style={surfaceStyle}
+          tintColor={LOCATION_GLASS_TINT_COLOR}
+        >
+          {content}
+        </GlassView>
+      ) : (
+        <View style={surfaceStyle}>{content}</View>
+      )}
     </Pressable>
   );
 }
@@ -157,41 +221,73 @@ export default function MapScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { height: screenHeight, width: screenWidth } = useWindowDimensions();
+
   const mapRef = useRef(null);
   const isMapReadyRef = useRef(false);
   const isRecenteringOnUserRef = useRef(false);
   const currentRegionRef = useRef(LISBON_REGION);
+  const morphPreviewRef = useRef(null);
   const pendingInitialLocationRegionRef = useRef(null);
-  const previewAnimation = useRef(new Animated.Value(0)).current;
+  const markerRefreshFrameRef = useRef(null);
+  const markerTrackingTimeoutRef = useRef(null);
+
   const [events, setEvents] = useState([]);
   const [locationStatus, setLocationStatus] = useState(
-    sessionLocationStatus === "idle" ? "locating" : sessionLocationStatus,
+    sessionLocationStatus === "idle" ? "locating" : sessionLocationStatus
   );
   const [isMapCenteredOnUser, setIsMapCenteredOnUser] = useState(false);
+  const [previewGeometry, setPreviewGeometry] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [userLocation, setUserLocation] = useState(sessionUserLocation);
-  const {
-    deactivateDiscoveryMode,
-    filterDiscoveryEvents,
-    isDiscoveryActive,
-  } = useDiscoveryMode();
+  const [shouldTrackMarkerViewChanges, setShouldTrackMarkerViewChanges] = useState(true);
+
+  const { deactivateDiscoveryMode, filterDiscoveryEvents, isDiscoveryActive } =
+    useDiscoveryMode();
+
   useInteractionLogger(LOG_ACTIONS.mapViewOpened, {
     screen: "MapScreen",
   });
 
-  const previewOpacity = previewAnimation;
-  const previewScale = previewAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.94, 1],
-  });
-  const previewTranslateY = previewAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: [18, 0],
-  });
-  const previewBounds = {
-    bottom: Math.max(insets.bottom, 12) + BOTTOM_NAV_HEIGHT + BOTTOM_NAV_GAP,
-    top: insets.top + TOP_NAV_OFFSET + TOP_NAV_HEIGHT + PREVIEW_TOP_GAP,
-  };
+  const requestMarkerViewRefresh = useCallback(() => {
+    if (markerTrackingTimeoutRef.current) {
+      clearTimeout(markerTrackingTimeoutRef.current);
+    }
+
+    setShouldTrackMarkerViewChanges(true);
+
+    markerTrackingTimeoutRef.current = setTimeout(() => {
+      setShouldTrackMarkerViewChanges(false);
+      markerTrackingTimeoutRef.current = null;
+    }, MARKER_VIEW_TRACKING_MS);
+  }, []);
+
+  const requestMarkerViewRefreshAfterCommit = useCallback(() => {
+    if (markerRefreshFrameRef.current) {
+      cancelAnimationFrame(markerRefreshFrameRef.current);
+    }
+
+    markerRefreshFrameRef.current = requestAnimationFrame(() => {
+      markerRefreshFrameRef.current = null;
+      requestMarkerViewRefresh();
+    });
+  }, [requestMarkerViewRefresh]);
+
+  useEffect(() => {
+    requestMarkerViewRefresh();
+
+    return () => {
+      if (markerTrackingTimeoutRef.current) {
+        clearTimeout(markerTrackingTimeoutRef.current);
+        markerTrackingTimeoutRef.current = null;
+      }
+
+      if (markerRefreshFrameRef.current) {
+        cancelAnimationFrame(markerRefreshFrameRef.current);
+        markerRefreshFrameRef.current = null;
+      }
+    };
+  }, [requestMarkerViewRefresh]);
 
   const centerMapOnRegion = useCallback((region, duration) => {
     currentRegionRef.current = region;
@@ -211,13 +307,12 @@ export default function MapScreen() {
         latitude: coordinate.latitude,
         latitudeDelta: currentRegion.latitudeDelta || LISBON_REGION.latitudeDelta,
         longitude: coordinate.longitude,
-        longitudeDelta:
-          currentRegion.longitudeDelta || LISBON_REGION.longitudeDelta,
+        longitudeDelta: currentRegion.longitudeDelta || LISBON_REGION.longitudeDelta,
       };
 
       centerMapOnRegion(nextRegion, duration);
     },
-    [centerMapOnRegion],
+    [centerMapOnRegion]
   );
 
   const centerMapOnUser = useCallback(
@@ -226,33 +321,38 @@ export default function MapScreen() {
       setIsMapCenteredOnUser(true);
       centerMapOnCoordinate(coordinate, duration);
     },
-    [centerMapOnCoordinate],
+    [centerMapOnCoordinate]
   );
 
-  const applyLocationResult = useCallback((result, shouldCenter) => {
-    if (result.status === "available" && result.coordinate) {
-      sessionUserLocation = result.coordinate;
-      sessionLocationStatus = "available";
-      setUserLocation(result.coordinate);
-      setLocationStatus("available");
+  const applyLocationResult = useCallback(
+    (result, shouldCenter) => {
+      if (result.status === "available" && result.coordinate) {
+        sessionUserLocation = result.coordinate;
+        sessionLocationStatus = "available";
 
-      if (shouldCenter) {
-        centerMapOnUser(result.coordinate);
-      } else {
-        setIsMapCenteredOnUser(
-          isRegionCenteredOnCoordinate(currentRegionRef.current, result.coordinate),
-        );
+        setUserLocation(result.coordinate);
+        setLocationStatus("available");
+        requestMarkerViewRefresh();
+
+        if (shouldCenter) {
+          centerMapOnUser(result.coordinate);
+        } else {
+          setIsMapCenteredOnUser(
+            isRegionCenteredOnCoordinate(currentRegionRef.current, result.coordinate)
+          );
+        }
+
+        return;
       }
 
-      return;
-    }
-
-    sessionLocationStatus =
-      result.status === "denied" ? "denied" : "unavailable";
-    isRecenteringOnUserRef.current = false;
-    setLocationStatus(sessionLocationStatus);
-    setIsMapCenteredOnUser(false);
-  }, [centerMapOnUser]);
+      sessionLocationStatus = result.status === "denied" ? "denied" : "unavailable";
+      isRecenteringOnUserRef.current = false;
+      setLocationStatus(sessionLocationStatus);
+      setIsMapCenteredOnUser(false);
+      requestMarkerViewRefresh();
+    },
+    [centerMapOnUser, requestMarkerViewRefresh]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -261,15 +361,21 @@ export default function MapScreen() {
       getEvents().then((nextEvents) => {
         if (isActive) {
           setEvents(filterDiscoveryEvents(nextEvents));
+          requestMarkerViewRefresh();
         }
       });
 
       return () => {
         isActive = false;
-        previewAnimation.setValue(0);
+        setPreviewGeometry(null);
         setSelectedEvent(null);
+        if (markerRefreshFrameRef.current) {
+          cancelAnimationFrame(markerRefreshFrameRef.current);
+          markerRefreshFrameRef.current = null;
+        }
+        requestMarkerViewRefresh();
       };
-    }, [filterDiscoveryEvents, previewAnimation]),
+    }, [filterDiscoveryEvents, requestMarkerViewRefresh])
   );
 
   useFocusEffect(
@@ -280,17 +386,17 @@ export default function MapScreen() {
         if (sessionUserLocation) {
           setUserLocation(sessionUserLocation);
           setIsMapCenteredOnUser(
-            isRegionCenteredOnCoordinate(
-              currentRegionRef.current,
-              sessionUserLocation,
-            ),
+            isRegionCenteredOnCoordinate(currentRegionRef.current, sessionUserLocation)
           );
         } else {
           setIsMapCenteredOnUser(false);
         }
+
         if (sessionLocationStatus !== "idle") {
           setLocationStatus(sessionLocationStatus);
         }
+
+        requestMarkerViewRefresh();
 
         return () => {
           isActive = false;
@@ -300,6 +406,7 @@ export default function MapScreen() {
       hasAutoCenteredOnUserThisSession = true;
       sessionLocationStatus = "locating";
       setLocationStatus("locating");
+      requestMarkerViewRefresh();
 
       getForegroundUserLocation({
         route: pathname,
@@ -313,8 +420,7 @@ export default function MapScreen() {
             return;
           }
 
-          sessionLocationStatus =
-            result.status === "denied" ? "denied" : "unavailable";
+          sessionLocationStatus = result.status === "denied" ? "denied" : "unavailable";
           return;
         }
 
@@ -324,60 +430,69 @@ export default function MapScreen() {
       return () => {
         isActive = false;
       };
-    }, [applyLocationResult, pathname]),
+    }, [applyLocationResult, pathname, requestMarkerViewRefresh])
   );
 
-  const closePreview = useCallback((reason) => {
-    if (selectedEvent && reason) {
-      logInteraction(LOG_ACTIONS.eventPreviewDismissed, {
-        eventId: selectedEvent.id,
-        reason,
-        route: pathname,
-        screen: "MapScreen",
-      }).catch(() => null);
-    }
-
-    previewAnimation.setValue(0);
+  const handlePreviewCloseComplete = useCallback(() => {
+    requestMarkerViewRefresh();
+    setPreviewGeometry(null);
     setSelectedEvent(null);
-  }, [pathname, previewAnimation, selectedEvent]);
+    requestMarkerViewRefreshAfterCommit();
+  }, [requestMarkerViewRefresh, requestMarkerViewRefreshAfterCommit]);
 
-  const animatePreviewIn = useCallback(() => {
-    previewAnimation.setValue(0);
-    Animated.spring(previewAnimation, {
-      damping: 18,
-      mass: 0.75,
-      stiffness: 190,
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
-  }, [previewAnimation]);
+  const closePreview = useCallback(
+    (reason) => {
+      if (selectedEvent && reason) {
+        logInteraction(LOG_ACTIONS.eventPreviewDismissed, {
+          eventId: selectedEvent.id,
+          reason,
+          route: pathname,
+          screen: "MapScreen",
+        }).catch(() => null);
+      }
 
-  const handleRegionChangeComplete = useCallback((region) => {
-    currentRegionRef.current = region;
-    const isCenteredOnUser = isRegionCenteredOnCoordinate(region, userLocation);
+      requestMarkerViewRefresh();
 
-    if (isCenteredOnUser) {
-      isRecenteringOnUserRef.current = false;
-      setIsMapCenteredOnUser(true);
-      return;
-    }
+      if (morphPreviewRef.current?.close) {
+        morphPreviewRef.current.close(reason);
+        return;
+      }
 
-    if (!isRecenteringOnUserRef.current) {
-      setIsMapCenteredOnUser(false);
-    }
-  }, [userLocation]);
+      handlePreviewCloseComplete();
+    },
+    [handlePreviewCloseComplete, pathname, requestMarkerViewRefresh, selectedEvent]
+  );
+
+  const handleRegionChangeComplete = useCallback(
+    (region) => {
+      currentRegionRef.current = region;
+      const isCenteredOnUser = isRegionCenteredOnCoordinate(region, userLocation);
+
+      if (isCenteredOnUser) {
+        isRecenteringOnUserRef.current = false;
+        setIsMapCenteredOnUser(true);
+        return;
+      }
+
+      if (!isRecenteringOnUserRef.current) {
+        setIsMapCenteredOnUser(false);
+      }
+    },
+    [userLocation]
+  );
 
   const handleMapReady = useCallback(() => {
     isMapReadyRef.current = true;
+    requestMarkerViewRefresh();
 
     if (pendingInitialLocationRegionRef.current) {
       mapRef.current?.animateToRegion(
         pendingInitialLocationRegionRef.current,
-        LOCATION_CENTER_ANIMATION_MS,
+        LOCATION_CENTER_ANIMATION_MS
       );
       pendingInitialLocationRegionRef.current = null;
     }
-  }, []);
+  }, [requestMarkerViewRefresh]);
 
   const handleMapPress = useCallback(() => {
     if (selectedEvent) {
@@ -395,24 +510,54 @@ export default function MapScreen() {
   }, [closePreview, selectedEvent]);
 
   const handlePinPress = useCallback(
-    (event) => {
-      const currentRegion = currentRegionRef.current || LISBON_REGION;
+    async (event) => {
+      if (markerRefreshFrameRef.current) {
+        cancelAnimationFrame(markerRefreshFrameRef.current);
+        markerRefreshFrameRef.current = null;
+      }
+
+      const coordinate = {
+        latitude: event.latitude,
+        longitude: event.longitude,
+      };
+
+      let startPoint = {
+        x: screenWidth / 2,
+        y: screenHeight / 2,
+      };
+
+      try {
+        const nextStartPoint = await mapRef.current?.pointForCoordinate(coordinate);
+
+        if (Number.isFinite(nextStartPoint?.x) && Number.isFinite(nextStartPoint?.y)) {
+          startPoint = nextStartPoint;
+        }
+      } catch {
+        startPoint = {
+          x: screenWidth / 2,
+          y: screenHeight / 2,
+        };
+      }
+
+      const tailTipPoint = startPoint;
+      const pinLayout = getEventPinLayout(event);
+      const nextPreviewGeometry = getPreviewGeometry({
+        pinLayout,
+        screenWidth,
+        startPoint,
+        tailTipPoint,
+      });
 
       isRecenteringOnUserRef.current = false;
+      setPreviewGeometry(nextPreviewGeometry);
       setSelectedEvent(event);
-      setIsMapCenteredOnUser(isRegionCenteredOnCoordinate(event, userLocation));
-      animatePreviewIn();
-
-      mapRef.current?.animateToRegion(
-        {
-          latitude: event.latitude,
-          latitudeDelta: currentRegion.latitudeDelta || LISBON_REGION.latitudeDelta,
-          longitude: event.longitude,
-          longitudeDelta:
-            currentRegion.longitudeDelta || LISBON_REGION.longitudeDelta,
-        },
-        MAP_CENTER_ANIMATION_MS,
+      setIsMapCenteredOnUser(
+        isRegionCenteredOnCoordinate(currentRegionRef.current, userLocation)
       );
+      requestMarkerViewRefresh();
+
+      // Intentionally do not recenter the map when opening a pin preview.
+      // Keeping the map stable preserves the morph illusion between pin and preview.
 
       logInteraction(LOG_ACTIONS.eventPinSelected, {
         eventId: event.id,
@@ -421,7 +566,13 @@ export default function MapScreen() {
         source: "map_pin",
       }).catch(() => null);
     },
-    [animatePreviewIn, pathname, userLocation],
+    [
+      pathname,
+      requestMarkerViewRefresh,
+      screenHeight,
+      screenWidth,
+      userLocation,
+    ]
   );
 
   const handleMarkerPress = useCallback(
@@ -429,28 +580,52 @@ export default function MapScreen() {
       markerEvent?.stopPropagation?.();
       handlePinPress(event);
     },
-    [handlePinPress],
+    [handlePinPress]
   );
 
   const openSelectedEvent = useCallback(() => {
     if (!selectedEvent) return;
 
     const eventId = selectedEvent.id;
-    closePreview("open_detail");
+
+    logInteraction(LOG_ACTIONS.eventPreviewDismissed, {
+      eventId,
+      reason: "open_detail",
+      route: pathname,
+      screen: "MapScreen",
+    }).catch(() => null);
+
+    requestMarkerViewRefresh();
+    setPreviewGeometry(null);
+    setSelectedEvent(null);
+    requestMarkerViewRefreshAfterCommit();
+
     router.push({
       pathname: "/event/[id]",
       params: { id: eventId },
     });
-  }, [closePreview, router, selectedEvent]);
+  }, [
+    pathname,
+    requestMarkerViewRefresh,
+    requestMarkerViewRefreshAfterCommit,
+    router,
+    selectedEvent,
+  ]);
 
-  const handlePreviewSavedChange = useCallback((updatedEvent) => {
-    setSelectedEvent(updatedEvent);
-    setEvents((currentEvents) =>
-      currentEvents.map((event) =>
-        event.id === updatedEvent.id ? updatedEvent : event,
-      ),
-    );
-  }, []);
+  const handlePreviewSavedChange = useCallback(
+    (updatedEvent) => {
+      if (!updatedEvent) return;
+
+      requestMarkerViewRefresh();
+      setSelectedEvent(updatedEvent);
+      setEvents((currentEvents) =>
+        currentEvents.map((event) =>
+          event.id === updatedEvent.id ? updatedEvent : event
+        )
+      );
+    },
+    [requestMarkerViewRefresh]
+  );
 
   const handleDiscoverDismiss = useCallback(() => {
     closePreview("discover_disabled");
@@ -459,7 +634,8 @@ export default function MapScreen() {
       screen: "MapScreen",
       source: "discover_pill",
     });
-  }, [closePreview, deactivateDiscoveryMode, pathname]);
+    requestMarkerViewRefresh();
+  }, [closePreview, deactivateDiscoveryMode, pathname, requestMarkerViewRefresh]);
 
   const handleLocationStatusPress = useCallback(() => {
     logInteraction(LOG_ACTIONS.userLocationRecentered, {
@@ -470,6 +646,7 @@ export default function MapScreen() {
 
     if (userLocation) {
       centerMapOnUser(userLocation);
+      requestMarkerViewRefresh();
       return;
     }
 
@@ -477,6 +654,7 @@ export default function MapScreen() {
     sessionLocationStatus = "locating";
     setLocationStatus("locating");
     setIsMapCenteredOnUser(false);
+    requestMarkerViewRefresh();
 
     getForegroundUserLocation({
       route: pathname,
@@ -485,7 +663,13 @@ export default function MapScreen() {
     }).then((result) => {
       applyLocationResult(result, true);
     });
-  }, [applyLocationResult, centerMapOnUser, pathname, userLocation]);
+  }, [
+    applyLocationResult,
+    centerMapOnUser,
+    pathname,
+    requestMarkerViewRefresh,
+    userLocation,
+  ]);
 
   return (
     <View style={styles.container}>
@@ -511,17 +695,27 @@ export default function MapScreen() {
         style={styles.map}
         toolbarEnabled={false}
       >
-        {events.map((event) => (
-          <Marker
-            anchor={{ x: 0.5, y: 1 }}
-            coordinate={{ latitude: event.latitude, longitude: event.longitude }}
-            key={`${event.id}-${isDiscoveryActive ? "discover" : "normal"}`}
-            onPress={(markerEvent) => handleMarkerPress(markerEvent, event)}
-            tracksViewChanges={isDiscoveryActive}
-          >
-            <EventPin event={event} isDiscoverMode={isDiscoveryActive} />
-          </Marker>
-        ))}
+        {events.map((event) => {
+          const isSelectedEvent = selectedEvent?.id === event.id;
+
+          return (
+            <Marker
+              anchor={getEventPinMarkerAnchor(event)}
+              coordinate={{
+                latitude: event.latitude,
+                longitude: event.longitude,
+              }}
+              key={event.id}
+              onPress={(markerEvent) => handleMarkerPress(markerEvent, event)}
+              tracksViewChanges={shouldTrackMarkerViewChanges || isDiscoveryActive}
+              zIndex={1}
+            >
+              <View style={isSelectedEvent ? styles.hiddenMapMarker : null}>
+                <EventPin event={event} isDiscoverMode={isDiscoveryActive} />
+              </View>
+            </Marker>
+          );
+        })}
 
         {userLocation && (
           <Marker
@@ -532,7 +726,7 @@ export default function MapScreen() {
             }}
             key="user-location"
             tappable={false}
-            tracksViewChanges={false}
+            tracksViewChanges={shouldTrackMarkerViewChanges}
             zIndex={1000}
           >
             <CurrentLocationMarker />
@@ -568,58 +762,18 @@ export default function MapScreen() {
         </>
       )}
 
-      {selectedEvent && (
-        <>
-          <Animated.View
-            style={[styles.blurLayer, { opacity: previewOpacity }]}
-          >
-            <Pressable
-              accessibilityLabel="Close event preview"
-              accessibilityRole="button"
-              onPress={() => closePreview("overlay_tap")}
-              style={styles.dismissLayer}
-            >
-              <BlurView
-                experimentalBlurMethod={
-                  Platform.OS === "android" ? "dimezisBlurView" : undefined
-                }
-                intensity={24}
-                pointerEvents="none"
-                style={styles.blurSurface}
-                tint="light"
-              />
-            </Pressable>
-          </Animated.View>
-
-          <Animated.View
-            pointerEvents="box-none"
-            style={[
-              styles.previewLayer,
-              previewBounds,
-              {
-                opacity: previewOpacity,
-                transform: [
-                  { translateY: previewTranslateY },
-                  { scale: previewScale },
-                ],
-              },
-            ]}
-          >
-            <View
-              onStartShouldSetResponder={() => true}
-              style={styles.previewCard}
-            >
-              <EventCard
-                event={selectedEvent}
-                key={selectedEvent.id}
-                onSavedChange={handlePreviewSavedChange}
-                onOpen={openSelectedEvent}
-                screen="MapScreen"
-                source="map_preview"
-              />
-            </View>
-          </Animated.View>
-        </>
+      {selectedEvent && previewGeometry && (
+        <MorphingEventPreview
+          event={selectedEvent}
+          geometry={previewGeometry}
+          isDiscoverMode={isDiscoveryActive}
+          onCloseComplete={handlePreviewCloseComplete}
+          onOpen={openSelectedEvent}
+          onSavedChange={handlePreviewSavedChange}
+          ref={morphPreviewRef}
+          screen="MapScreen"
+          source="map_preview"
+        />
       )}
     </View>
   );
@@ -634,6 +788,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   locationStatus: {
+    position: "absolute",
+    right: 18,
+    zIndex: 1,
+  },
+  locationStatusSurface: {
     alignItems: "center",
     backgroundColor: colors.effects.surfaceOverlay,
     borderColor: colors.effects.surfaceBorder,
@@ -643,9 +802,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 5,
     minHeight: 32,
+    overflow: "hidden",
     paddingHorizontal: 10,
-    position: "absolute",
-    right: 18,
     shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
@@ -653,11 +811,10 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.08,
     shadowRadius: 12,
-    zIndex: 1,
   },
   locationStatusActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.effects.surfaceStrongBorder,
+    backgroundColor: colors.effects.primaryPressed,
+    borderColor: colors.primary,
   },
   locationStatusInactive: {
     opacity: 0.78,
@@ -712,29 +869,8 @@ const styles = StyleSheet.create({
     height: 10,
     width: 10,
   },
-  blurLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1,
-  },
-  dismissLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  blurSurface: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.effects.tabLiquidGlass,
-  },
-  previewLayer: {
-    alignItems: "center",
-    justifyContent: "center",
-    left: 0,
-    paddingHorizontal: PREVIEW_HORIZONTAL_PADDING,
-    position: "absolute",
-    right: 0,
-    zIndex: 2,
-  },
-  previewCard: {
-    maxWidth: PREVIEW_MAX_WIDTH,
-    width: "100%",
+  hiddenMapMarker: {
+    opacity: 0,
   },
   discoverBorder: {
     ...StyleSheet.absoluteFillObject,
@@ -747,5 +883,8 @@ const styles = StyleSheet.create({
     marginLeft: -45,
     position: "absolute",
     zIndex: 4,
+  },
+  pressed: {
+    opacity: 0.72,
   },
 });

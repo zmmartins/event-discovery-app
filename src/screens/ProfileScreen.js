@@ -14,6 +14,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ExperiencePin from "../components/ExperiencePin";
+import { getEventPinMarkerAnchor } from "../components/EventPin";
 import ProfileExperienceCard from "../components/ProfileExperienceCard";
 import useInteractionLogger from "../hooks/useInteractionLogger";
 import {
@@ -293,7 +294,7 @@ export default function ProfileScreen() {
           >
             {profile.mapPins.map((pin) => (
               <Marker
-                anchor={{ x: 0.5, y: 1 }}
+                anchor={getEventPinMarkerAnchor(pin.event)}
                 coordinate={{
                   latitude: pin.latitude,
                   longitude: pin.longitude,
@@ -301,7 +302,7 @@ export default function ProfileScreen() {
                 key={pin.id}
                 onPress={(markerEvent) => handlePinPress(markerEvent, pin)}
               >
-                <ExperiencePin photoRef={pin.photoRef} />
+                <ExperiencePin event={pin.event} photoRef={pin.photoRef} />
               </Marker>
             ))}
           </MapView>
