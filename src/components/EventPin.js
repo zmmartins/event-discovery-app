@@ -63,6 +63,7 @@ export default function EventPin({
   centerImageAccessibilityLabel,
   centerImageSource,
   event = {},
+  showPopularityAura = true,
 }) {
   const {
     attendingFriends = [],
@@ -83,14 +84,16 @@ export default function EventPin({
         },
       ]}
     >
-      <PopularityAura
-        animated={false}
-        popularity={event.popularity}
-        style={{
-          left: layout.auraOffset,
-          top: layout.auraOffset,
-        }}
-      />
+      {showPopularityAura && (
+        <PopularityAura
+          animated={false}
+          popularity={event.popularity}
+          style={{
+            left: layout.auraOffset,
+            top: layout.auraOffset,
+          }}
+        />
+      )}
 
       <View
         style={[

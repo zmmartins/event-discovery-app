@@ -20,6 +20,9 @@ import EventPin, {
   getEventPinMarkerAnchor,
 } from "../components/EventPin";
 import MorphingEventPreview from "../components/MorphingEventPreview";
+import PopularityAura, {
+  getPopularityAuraConfig,
+} from "../components/PopularityAura";
 import { useDiscoveryMode } from "../context/DiscoveryModeContext";
 import useInteractionLogger from "../hooks/useInteractionLogger";
 import { getEvents } from "../services/eventService";
@@ -141,6 +144,56 @@ function getPreviewGeometry({ pinLayout, screenWidth, startPoint, tailTipPoint }
   };
 }
 
+function coordinateToScreenPoint({ coordinate, region, screenHeight, screenWidth }) {
+  if (!coordinate || !region) return null;
+
+  const longitudeDelta = region.longitudeDelta || LISBON_REGION.longitudeDelta;
+  const latitudeDelta = region.latitudeDelta || LISBON_REGION.latitudeDelta;
+  const longitudeMin = region.longitude - longitudeDelta / 2;
+  const latitudeMax = region.latitude + latitudeDelta / 2;
+  const x =
+    ((coordinate.longitude - longitudeMin) / longitudeDelta) * screenWidth;
+  const y =
+    ((latitudeMax - coordinate.latitude) / latitudeDelta) * screenHeight;
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  return { x, y };
+}
+
+function MapPinAuraOverlay({ event, region, screenHeight, screenWidth }) {
+  const layout = getEventPinLayout(event);
+  const { auraSize } = getPopularityAuraConfig(event.popularity);
+  const point = coordinateToScreenPoint({
+    coordinate: {
+      latitude: event.latitude,
+      longitude: event.longitude,
+    },
+    region,
+    screenHeight,
+    screenWidth,
+  });
+
+  if (!point) return null;
+
+  const pinCenterY =
+    point.y -
+    layout.tailTipY +
+    layout.circleOffset +
+    EVENT_PIN_METRICS.circleSize / 2;
+
+  return (
+    <PopularityAura
+      animated
+      popularity={event.popularity}
+      style={{
+        left: point.x - auraSize / 2,
+        top: pinCenterY - auraSize / 2,
+      }}
+    />
+  );
+}
+
 function CurrentLocationMarker() {
   return (
     <View pointerEvents="none" style={styles.userLocationMarker}>
@@ -233,6 +286,7 @@ export default function MapScreen() {
   const markerTrackingTimeoutRef = useRef(null);
 
   const [events, setEvents] = useState([]);
+  const [displayedRegion, setDisplayedRegion] = useState(LISBON_REGION);
   const [locationStatus, setLocationStatus] = useState(
     sessionLocationStatus === "idle" ? "locating" : sessionLocationStatus
   );
@@ -360,7 +414,9 @@ export default function MapScreen() {
 
       getEvents().then((nextEvents) => {
         if (isActive) {
-          setEvents(filterDiscoveryEvents(nextEvents));
+          const filteredEvents = filterDiscoveryEvents(nextEvents);
+
+          setEvents(filteredEvents);
           requestMarkerViewRefresh();
         }
       });
@@ -463,18 +519,21 @@ export default function MapScreen() {
     [handlePreviewCloseComplete, pathname, requestMarkerViewRefresh, selectedEvent]
   );
 
+  const handleRegionChange = useCallback((region) => {
+    currentRegionRef.current = region;
+    setDisplayedRegion(region);
+  }, []);
+
   const handleRegionChangeComplete = useCallback(
     (region) => {
       currentRegionRef.current = region;
+      setDisplayedRegion(region);
       const isCenteredOnUser = isRegionCenteredOnCoordinate(region, userLocation);
 
       if (isCenteredOnUser) {
         isRecenteringOnUserRef.current = false;
         setIsMapCenteredOnUser(true);
-        return;
-      }
-
-      if (!isRecenteringOnUserRef.current) {
+      } else if (!isRecenteringOnUserRef.current) {
         setIsMapCenteredOnUser(false);
       }
     },
@@ -683,6 +742,7 @@ export default function MapScreen() {
         onMapReady={handleMapReady}
         onPanDrag={handleMapPanDrag}
         onPress={handleMapPress}
+        onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
         provider={PROVIDER_GOOGLE}
         ref={mapRef}
@@ -711,7 +771,7 @@ export default function MapScreen() {
               zIndex={1}
             >
               <View style={isSelectedEvent ? styles.hiddenMapMarker : null}>
-                <EventPin event={event} />
+                <EventPin event={event} showPopularityAura={false} />
               </View>
             </Marker>
           );
@@ -733,6 +793,24 @@ export default function MapScreen() {
           </Marker>
         )}
       </MapView>
+
+      <View pointerEvents="none" style={styles.auraOverlayLayer}>
+        {events.map((event) => {
+          const isSelectedEvent = selectedEvent?.id === event.id;
+
+          if (isSelectedEvent) return null;
+
+          return (
+            <MapPinAuraOverlay
+              event={event}
+              key={event.id}
+              region={displayedRegion}
+              screenHeight={screenHeight}
+              screenWidth={screenWidth}
+            />
+          );
+        })}
+      </View>
 
       <LocationStatusIndicator
         isCenteredOnUser={isMapCenteredOnUser}
@@ -785,6 +863,10 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  auraOverlayLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
   locationStatus: {
     position: "absolute",
