@@ -26,8 +26,8 @@ import {
   EVENT_PIN_AVATAR_POSITIONS,
   EVENT_PIN_METRICS,
   getEventPinLayout,
-  getEventPinParticles,
 } from "./EventPin";
+import PopularityAura from "./PopularityAura";
 import { toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
@@ -166,7 +166,6 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
   {
     event,
     geometry,
-    isDiscoverMode = false,
     onCloseComplete,
     onOpen,
     onSavedChange,
@@ -183,7 +182,6 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
   const [isSaved, setIsSaved] = useState(Boolean(event.isSaved));
 
   const layout = getEventPinLayout(event);
-  const particles = getEventPinParticles(event.id, layout, isDiscoverMode);
   const attendees = Array.isArray(event.attendingFriends)
     ? event.attendingFriends
     : [];
@@ -277,7 +275,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     };
   }, [geometry.width, layout.circleOffset]);
 
-  const particlesStyle = useAnimatedStyle(() => ({
+  const auraStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 0.3], [1, 0], Extrapolation.CLAMP),
   }));
 
@@ -396,32 +394,16 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
       <Animated.View
         pointerEvents="none"
-        style={[
-          styles.cloud,
-          {
-            height: layout.containerSize,
-            width: layout.containerSize,
-          },
-          particlesStyle,
-        ]}
+        style={[styles.auraLayer, auraStyle]}
       >
-        {particles.map((particle) => (
-          <View
-            key={particle.id}
-            style={[
-              styles.particle,
-              isDiscoverMode && styles.discoverParticle,
-              {
-                borderRadius: particle.size / 2,
-                height: particle.size,
-                left: layout.contentRadius + particle.x - particle.size / 2,
-                opacity: particle.opacity,
-                top: layout.contentRadius + particle.y - particle.size / 2,
-                width: particle.size,
-              },
-            ]}
-          />
-        ))}
+        <PopularityAura
+          animated
+          popularity={event.popularity}
+          style={{
+            left: layout.auraOffset,
+            top: layout.auraOffset,
+          }}
+        />
       </Animated.View>
 
       <Animated.Image
@@ -510,18 +492,11 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     zIndex: 1,
   },
-  cloud: {
+  auraLayer: {
     left: 0,
     position: "absolute",
     top: 0,
     zIndex: 0,
-  },
-  particle: {
-    backgroundColor: colors.secondary,
-    position: "absolute",
-  },
-  discoverParticle: {
-    backgroundColor: colors.secondary,
   },
   thumbnail: {
     position: "absolute",

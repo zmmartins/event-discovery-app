@@ -711,7 +711,7 @@ export default function MapScreen() {
               zIndex={1}
             >
               <View style={isSelectedEvent ? styles.hiddenMapMarker : null}>
-                <EventPin event={event} isDiscoverMode={isDiscoveryActive} />
+                <EventPin event={event} />
               </View>
             </Marker>
           );
@@ -766,7 +766,6 @@ export default function MapScreen() {
         <MorphingEventPreview
           event={selectedEvent}
           geometry={previewGeometry}
-          isDiscoverMode={isDiscoveryActive}
           onCloseComplete={handlePreviewCloseComplete}
           onOpen={openSelectedEvent}
           onSavedChange={handlePreviewSavedChange}
