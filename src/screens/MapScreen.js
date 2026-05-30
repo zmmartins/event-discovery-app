@@ -20,15 +20,17 @@ import EventPin, {
   getEventPinMarkerAnchor,
 } from "../components/EventPin";
 import MorphingEventPreview from "../components/MorphingEventPreview";
-import PopularityAura, {
-  getPopularityAuraConfig,
-} from "../components/PopularityAura";
 import { useDiscoveryMode } from "../context/DiscoveryModeContext";
 import useInteractionLogger from "../hooks/useInteractionLogger";
 import { getEvents } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { getForegroundUserLocation } from "../services/locationService";
 import { colors } from "../theme/colors";
+import {
+  LIQUID_GLASS_COLOR_SCHEME,
+  LIQUID_GLASS_EFFECT_STYLE,
+  LIQUID_GLASS_TINT_COLOR,
+} from "../theme/liquidGlass";
 import { APP_MAP_STYLE } from "../theme/mapStyle";
 
 const LISBON_REGION = {
@@ -43,8 +45,6 @@ const PREVIEW_MAX_WIDTH = 380;
 const PREVIEW_CARD_HEIGHT = 216;
 const LOCATION_CENTER_ANIMATION_MS = 700;
 const USER_CENTER_TOLERANCE_METERS = 80;
-const LOCATION_GLASS_COLOR_SCHEME = "light";
-const LOCATION_GLASS_TINT_COLOR = colors.effects.glassTint;
 
 // Custom react-native-maps markers are rendered as native snapshots.
 // Keep tracking enabled briefly after visual changes, then disable it again
@@ -144,56 +144,6 @@ function getPreviewGeometry({ pinLayout, screenWidth, startPoint, tailTipPoint }
   };
 }
 
-function coordinateToScreenPoint({ coordinate, region, screenHeight, screenWidth }) {
-  if (!coordinate || !region) return null;
-
-  const longitudeDelta = region.longitudeDelta || LISBON_REGION.longitudeDelta;
-  const latitudeDelta = region.latitudeDelta || LISBON_REGION.latitudeDelta;
-  const longitudeMin = region.longitude - longitudeDelta / 2;
-  const latitudeMax = region.latitude + latitudeDelta / 2;
-  const x =
-    ((coordinate.longitude - longitudeMin) / longitudeDelta) * screenWidth;
-  const y =
-    ((latitudeMax - coordinate.latitude) / latitudeDelta) * screenHeight;
-
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-
-  return { x, y };
-}
-
-function MapPinAuraOverlay({ event, region, screenHeight, screenWidth }) {
-  const layout = getEventPinLayout(event);
-  const { auraSize } = getPopularityAuraConfig(event.popularity);
-  const point = coordinateToScreenPoint({
-    coordinate: {
-      latitude: event.latitude,
-      longitude: event.longitude,
-    },
-    region,
-    screenHeight,
-    screenWidth,
-  });
-
-  if (!point) return null;
-
-  const pinCenterY =
-    point.y -
-    layout.tailTipY +
-    layout.circleOffset +
-    EVENT_PIN_METRICS.circleSize / 2;
-
-  return (
-    <PopularityAura
-      animated
-      popularity={event.popularity}
-      style={{
-        left: point.x - auraSize / 2,
-        top: pinCenterY - auraSize / 2,
-      }}
-    />
-  );
-}
-
 function CurrentLocationMarker() {
   return (
     <View pointerEvents="none" style={styles.userLocationMarker}>
@@ -255,11 +205,11 @@ function LocationStatusIndicator({ isCenteredOnUser, onPress, status, top }) {
     >
       {Platform.OS === "ios" && liquidGlassAvailable ? (
         <GlassView
-          colorScheme={LOCATION_GLASS_COLOR_SCHEME}
-          glassEffectStyle="regular"
+          colorScheme={LIQUID_GLASS_COLOR_SCHEME}
+          glassEffectStyle={LIQUID_GLASS_EFFECT_STYLE}
           isInteractive={false}
           style={surfaceStyle}
-          tintColor={LOCATION_GLASS_TINT_COLOR}
+          tintColor={LIQUID_GLASS_TINT_COLOR}
         >
           {content}
         </GlassView>
@@ -286,7 +236,6 @@ export default function MapScreen() {
   const markerTrackingTimeoutRef = useRef(null);
 
   const [events, setEvents] = useState([]);
-  const [displayedRegion, setDisplayedRegion] = useState(LISBON_REGION);
   const [locationStatus, setLocationStatus] = useState(
     sessionLocationStatus === "idle" ? "locating" : sessionLocationStatus
   );
@@ -521,13 +470,11 @@ export default function MapScreen() {
 
   const handleRegionChange = useCallback((region) => {
     currentRegionRef.current = region;
-    setDisplayedRegion(region);
   }, []);
 
   const handleRegionChangeComplete = useCallback(
     (region) => {
       currentRegionRef.current = region;
-      setDisplayedRegion(region);
       const isCenteredOnUser = isRegionCenteredOnCoordinate(region, userLocation);
 
       if (isCenteredOnUser) {
@@ -550,6 +497,7 @@ export default function MapScreen() {
         LOCATION_CENTER_ANIMATION_MS
       );
       pendingInitialLocationRegionRef.current = null;
+      return;
     }
   }, [requestMarkerViewRefresh]);
 
@@ -625,13 +573,7 @@ export default function MapScreen() {
         source: "map_pin",
       }).catch(() => null);
     },
-    [
-      pathname,
-      requestMarkerViewRefresh,
-      screenHeight,
-      screenWidth,
-      userLocation,
-    ]
+    [pathname, requestMarkerViewRefresh, screenHeight, screenWidth, userLocation]
   );
 
   const handleMarkerPress = useCallback(
@@ -744,8 +686,10 @@ export default function MapScreen() {
         onPress={handleMapPress}
         onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
+        pitchEnabled={false}
         provider={PROVIDER_GOOGLE}
         ref={mapRef}
+        rotateEnabled={false}
         showsBuildings={false}
         showsCompass={false}
         showsIndoors={false}
@@ -771,7 +715,7 @@ export default function MapScreen() {
               zIndex={1}
             >
               <View style={isSelectedEvent ? styles.hiddenMapMarker : null}>
-                <EventPin event={event} showPopularityAura={false} />
+                <EventPin event={event} isDiscoverMode={isDiscoveryActive} />
               </View>
             </Marker>
           );
@@ -793,24 +737,6 @@ export default function MapScreen() {
           </Marker>
         )}
       </MapView>
-
-      <View pointerEvents="none" style={styles.auraOverlayLayer}>
-        {events.map((event) => {
-          const isSelectedEvent = selectedEvent?.id === event.id;
-
-          if (isSelectedEvent) return null;
-
-          return (
-            <MapPinAuraOverlay
-              event={event}
-              key={event.id}
-              region={displayedRegion}
-              screenHeight={screenHeight}
-              screenWidth={screenWidth}
-            />
-          );
-        })}
-      </View>
 
       <LocationStatusIndicator
         isCenteredOnUser={isMapCenteredOnUser}
@@ -864,10 +790,6 @@ const styles = StyleSheet.create({
   map: {
     ...StyleSheet.absoluteFillObject,
   },
-  auraOverlayLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1,
-  },
   locationStatus: {
     position: "absolute",
     right: 18,
@@ -894,7 +816,6 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
   },
   locationStatusActive: {
-    backgroundColor: colors.effects.primaryPressed,
     borderColor: colors.primary,
   },
   locationStatusInactive: {

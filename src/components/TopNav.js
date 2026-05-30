@@ -5,6 +5,15 @@ import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { colors } from "../theme/colors";
 import {
+  LIQUID_GLASS_ANDROID_BACKGROUND_COLOR,
+  LIQUID_GLASS_COLOR_SCHEME,
+  LIQUID_GLASS_DEFAULT_BACKGROUND_COLOR,
+  LIQUID_GLASS_EFFECT_STYLE,
+  LIQUID_GLASS_FALLBACK_BACKGROUND_COLOR,
+  LIQUID_GLASS_IOS_BACKGROUND_COLOR,
+  LIQUID_GLASS_TINT_COLOR,
+} from "../theme/liquidGlass";
+import {
   LOG_ACTIONS,
   logInteraction,
 } from "../services/interactionLogService";
@@ -50,8 +59,6 @@ function getLiquidGlassAvailable() {
 }
 
 const liquidGlassAvailable = getLiquidGlassAvailable();
-const glassColorScheme = "light";
-const lightGlassTintColor = colors.effects.glassTint;
 
 function normalizePathname(pathname) {
   if (!pathname || pathname === "/") return "/";
@@ -74,11 +81,11 @@ function GlassSurface({ children, style }) {
   if (Platform.OS === "ios" && liquidGlassAvailable) {
     return (
       <GlassView
-        colorScheme={glassColorScheme}
-        glassEffectStyle="regular"
+        colorScheme={LIQUID_GLASS_COLOR_SCHEME}
+        glassEffectStyle={LIQUID_GLASS_EFFECT_STYLE}
         isInteractive={false}
         style={surfaceStyle}
-        tintColor={lightGlassTintColor}
+        tintColor={LIQUID_GLASS_TINT_COLOR}
       >
         {children}
       </GlassView>
@@ -196,17 +203,17 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
   },
   iosLiquidGlassSurface: {
-    backgroundColor: colors.effects.tabLiquidGlass,
+    backgroundColor: LIQUID_GLASS_IOS_BACKGROUND_COLOR,
   },
   iosGlassFallback: {
-    backgroundColor: colors.effects.tabGlass,
+    backgroundColor: LIQUID_GLASS_FALLBACK_BACKGROUND_COLOR,
   },
   androidGlassFallback: {
-    backgroundColor: colors.surface,
+    backgroundColor: LIQUID_GLASS_ANDROID_BACKGROUND_COLOR,
     elevation: 6,
   },
   defaultGlassFallback: {
-    backgroundColor: colors.effects.glassSurface,
+    backgroundColor: LIQUID_GLASS_DEFAULT_BACKGROUND_COLOR,
   },
   iconButton: {
     alignItems: "center",

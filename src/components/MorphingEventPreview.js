@@ -22,16 +22,11 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import {
-  EVENT_PIN_AVATAR_POSITIONS,
-  EVENT_PIN_METRICS,
-  getEventPinLayout,
-} from "./EventPin";
-import PopularityAura from "./PopularityAura";
 import { toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 import { getAvatarImage, getEventImage } from "../utils/imageAssets";
+import { EVENT_PIN_METRICS, EventPinParticles, getEventPinLayout } from "./EventPin";
 
 const CARD_HEIGHT = 216;
 const CARD_RADIUS = 14;
@@ -53,6 +48,12 @@ const CARD_AVATAR_STEP = CARD_AVATAR_SIZE - CARD_AVATAR_OVERLAP;
 const PIN_SURFACE_COLOR = colors.primary;
 const CARD_SURFACE_COLOR = colors.surface;
 const CARD_BORDER_COLOR = colors.border;
+const EVENT_PIN_AVATAR_POSITIONS = [
+  { x: -22, y: -17 },
+  { x: 22, y: -17 },
+  { x: 25, y: 8 },
+  { x: -25, y: 10 },
+];
 
 function MorphingAvatar({ friend, hasOverflow, index, layout, progress }) {
   const avatarPosition =
@@ -72,11 +73,7 @@ function MorphingAvatar({ friend, hasOverflow, index, layout, progress }) {
 
   const avatarStyle = useAnimatedStyle(() => {
     const value = progress.value;
-    const size = interpolate(
-      value,
-      [0, 1],
-      [PIN_AVATAR_SIZE, CARD_AVATAR_SIZE]
-    );
+    const size = interpolate(value, [0, 1], [PIN_AVATAR_SIZE, CARD_AVATAR_SIZE]);
     const borderWidth = interpolate(
       value,
       [0, 1],
@@ -129,12 +126,7 @@ function MorphingAvatar({ friend, hasOverflow, index, layout, progress }) {
 function OverflowAvatar({ index, progress }) {
   const overflowStyle = useAnimatedStyle(() => {
     const value = progress.value;
-    const opacity = interpolate(
-      value,
-      [0.58, 0.86, 1],
-      [0, 0.5, 1],
-      Extrapolation.CLAMP
-    );
+    const opacity = interpolate(value, [0.58, 0.86, 1], [0, 0.5, 1], Extrapolation.CLAMP);
 
     return {
       opacity,
@@ -182,9 +174,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
   const [isSaved, setIsSaved] = useState(Boolean(event.isSaved));
 
   const layout = getEventPinLayout(event);
-  const attendees = Array.isArray(event.attendingFriends)
-    ? event.attendingFriends
-    : [];
+  const attendees = Array.isArray(event.attendingFriends) ? event.attendingFriends : [];
   const morphAvatars = attendees.slice(0, 4);
   const hasOverflow = attendees.length > 4;
   const price = event.price?.toUpperCase?.() ?? "";
@@ -275,7 +265,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     };
   }, [geometry.width, layout.circleOffset]);
 
-  const auraStyle = useAnimatedStyle(() => ({
+  const particleStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 0.3], [1, 0], Extrapolation.CLAMP),
   }));
 
@@ -288,22 +278,10 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         [0, 1],
         [EVENT_PIN_METRICS.imageSize / 2, THUMBNAIL_RADIUS]
       ),
-      height: interpolate(
-        value,
-        [0, 1],
-        [EVENT_PIN_METRICS.imageSize, THUMBNAIL_HEIGHT]
-      ),
-      left: interpolate(
-        value,
-        [0, 1],
-        [layout.circleOffset + 2, CARD_PADDING]
-      ),
+      height: interpolate(value, [0, 1], [EVENT_PIN_METRICS.imageSize, THUMBNAIL_HEIGHT]),
+      left: interpolate(value, [0, 1], [layout.circleOffset + 2, CARD_PADDING]),
       top: interpolate(value, [0, 1], [layout.circleOffset + 2, CARD_PADDING]),
-      width: interpolate(
-        value,
-        [0, 1],
-        [EVENT_PIN_METRICS.imageSize, THUMBNAIL_WIDTH]
-      ),
+      width: interpolate(value, [0, 1], [EVENT_PIN_METRICS.imageSize, THUMBNAIL_WIDTH]),
     };
   }, [layout.circleOffset]);
 
@@ -392,18 +370,8 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         style={[styles.surface, surfaceStyle]}
       />
 
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.auraLayer, auraStyle]}
-      >
-        <PopularityAura
-          animated
-          popularity={event.popularity}
-          style={{
-            left: layout.auraOffset,
-            top: layout.auraOffset,
-          }}
-        />
+      <Animated.View pointerEvents="none" style={[styles.particleLayer, particleStyle]}>
+        <EventPinParticles event={event} layout={layout} />
       </Animated.View>
 
       <Animated.Image
@@ -426,7 +394,10 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
       {hasOverflow && <OverflowAvatar index={3} progress={progress} />}
 
-      <Animated.View pointerEvents="box-none" style={[styles.cardContent, cardContentStyle]}>
+      <Animated.View
+        pointerEvents="box-none"
+        style={[styles.cardContent, cardContentStyle]}
+      >
         <View style={styles.headerRow}>
           <Text numberOfLines={2} style={styles.title}>
             {event.title}
@@ -492,7 +463,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     zIndex: 1,
   },
-  auraLayer: {
+  particleLayer: {
     left: 0,
     position: "absolute",
     top: 0,

@@ -5,6 +5,12 @@ import { Platform } from "react-native";
 
 import ScreenStatusBar from "../../src/components/ScreenStatusBar";
 import { colors } from "../../src/theme/colors";
+import {
+  LIQUID_GLASS_ANDROID_BACKGROUND_COLOR,
+  LIQUID_GLASS_FALLBACK_BACKGROUND_COLOR,
+  LIQUID_GLASS_IOS_BACKGROUND_COLOR,
+  LIQUID_GLASS_TAB_BLUR_EFFECT,
+} from "../../src/theme/liquidGlass";
 
 function getLiquidGlassAvailable() {
   if (Platform.OS !== "ios") return false;
@@ -19,16 +25,17 @@ function getLiquidGlassAvailable() {
 const liquidGlassAvailable = getLiquidGlassAvailable();
 
 const lightGlassBackgroundColor = liquidGlassAvailable
-  ? colors.effects.tabLiquidGlass
-  : colors.effects.tabGlass;
+  ? LIQUID_GLASS_IOS_BACKGROUND_COLOR
+  : LIQUID_GLASS_FALLBACK_BACKGROUND_COLOR;
 
 const tabBackgroundColor = Platform.select({
   ios: lightGlassBackgroundColor,
-  android: colors.surface,
-  default: colors.surface,
+  android: LIQUID_GLASS_ANDROID_BACKGROUND_COLOR,
+  default: LIQUID_GLASS_ANDROID_BACKGROUND_COLOR,
 });
 
-const tabBlurEffect = Platform.OS === "ios" ? "systemUltraThinMaterialLight" : undefined;
+const tabBlurEffect =
+  Platform.OS === "ios" ? LIQUID_GLASS_TAB_BLUR_EFFECT : undefined;
 
 const lightTabBarProps = {
   backgroundColor: tabBackgroundColor,
