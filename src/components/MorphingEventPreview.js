@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
   Extrapolation,
@@ -37,120 +37,42 @@ const THUMBNAIL_RADIUS = 8;
 const INFO_GAP = 12;
 const DETAILS_BUTTON_WIDTH = 62;
 const DETAILS_BUTTON_HEIGHT = 32;
-const PIN_AVATAR_SIZE = 18;
-const PIN_AVATAR_BORDER_WIDTH = 2;
-const CARD_AVATAR_SIZE = 24;
-const CARD_AVATAR_BORDER_WIDTH = 1.5;
-const CARD_AVATAR_OVERLAP = 10;
 const CARD_CONTENT_LEFT = CARD_PADDING + THUMBNAIL_WIDTH + INFO_GAP;
-const CARD_AVATAR_TOP = CARD_HEIGHT - CARD_PADDING - CARD_AVATAR_SIZE - 6;
-const CARD_AVATAR_STEP = CARD_AVATAR_SIZE - CARD_AVATAR_OVERLAP;
 const PIN_SURFACE_COLOR = colors.primary;
 const CARD_SURFACE_COLOR = colors.surface;
 const CARD_BORDER_COLOR = colors.border;
-const EVENT_PIN_AVATAR_POSITIONS = [
-  { x: -22, y: -17 },
-  { x: 22, y: -17 },
-  { x: 25, y: 8 },
-  { x: -25, y: 10 },
-];
+const CARD_AVATAR_SIZE = 24;
+const CARD_AVATAR_BORDER_WIDTH = 1.5;
+const CARD_AVATAR_OVERLAP = 10;
 
-function MorphingAvatar({ friend, hasOverflow, index, layout, progress }) {
-  const avatarPosition =
-    EVENT_PIN_AVATAR_POSITIONS[index] ?? EVENT_PIN_AVATAR_POSITIONS[0];
-  const startLeft =
-    layout.circleOffset +
-    EVENT_PIN_METRICS.circleSize / 2 +
-    avatarPosition.x -
-    PIN_AVATAR_SIZE / 2;
-  const startTop =
-    layout.circleOffset +
-    EVENT_PIN_METRICS.circleSize / 2 +
-    avatarPosition.y -
-    PIN_AVATAR_SIZE / 2;
-  const endLeft = CARD_CONTENT_LEFT + index * CARD_AVATAR_STEP;
-  const endTop = CARD_AVATAR_TOP;
+function PreviewAttendeeStack({ attendees }) {
+  const safeAttendees = Array.isArray(attendees) ? attendees : [];
+  const hasOverflow = safeAttendees.length > 4;
+  const visibleAttendees = hasOverflow
+    ? safeAttendees.slice(0, 3)
+    : safeAttendees.slice(0, 4);
 
-  const avatarStyle = useAnimatedStyle(() => {
-    const value = progress.value;
-    const size = interpolate(value, [0, 1], [PIN_AVATAR_SIZE, CARD_AVATAR_SIZE]);
-    const borderWidth = interpolate(
-      value,
-      [0, 1],
-      [PIN_AVATAR_BORDER_WIDTH, CARD_AVATAR_BORDER_WIDTH]
-    );
-
-    return {
-      borderRadius: size / 2,
-      borderWidth,
-      height: size,
-      left: interpolate(value, [0, 1], [startLeft, endLeft]),
-      opacity:
-        hasOverflow && index === 3
-          ? interpolate(value, [0, 0.72, 1], [1, 0.55, 0.12], Extrapolation.CLAMP)
-          : 1,
-      top: interpolate(value, [0, 1], [startTop, endTop]),
-      width: size,
-    };
-  }, [endLeft, endTop, hasOverflow, index, startLeft, startTop]);
-
-  const imageStyle = useAnimatedStyle(() => {
-    const value = progress.value;
-    const imageSize = interpolate(
-      value,
-      [0, 1],
-      [
-        PIN_AVATAR_SIZE - PIN_AVATAR_BORDER_WIDTH * 2,
-        CARD_AVATAR_SIZE - CARD_AVATAR_BORDER_WIDTH * 2,
-      ]
-    );
-
-    return {
-      borderRadius: imageSize / 2,
-      height: imageSize,
-      width: imageSize,
-    };
-  });
+  if (safeAttendees.length === 0) {
+    return <View style={styles.emptyStack} />;
+  }
 
   return (
-    <Animated.View style={[styles.morphAvatar, avatarStyle]}>
-      <Animated.Image
-        accessibilityLabel={friend.name}
-        source={getAvatarImage(friend.avatarKey)}
-        style={imageStyle}
-      />
-    </Animated.View>
-  );
-}
+    <View style={styles.avatarStack}>
+      {visibleAttendees.map((friend, index) => (
+        <Image
+          accessibilityLabel={friend.name}
+          key={friend.id || `${friend.name}-${index}`}
+          source={getAvatarImage(friend.avatarKey)}
+          style={[styles.avatar, index > 0 && styles.avatarOverlap]}
+        />
+      ))}
 
-function OverflowAvatar({ index, progress }) {
-  const overflowStyle = useAnimatedStyle(() => {
-    const value = progress.value;
-    const opacity = interpolate(value, [0.58, 0.86, 1], [0, 0.5, 1], Extrapolation.CLAMP);
-
-    return {
-      opacity,
-      transform: [
-        {
-          scale: interpolate(value, [0.58, 1], [0.76, 1], Extrapolation.CLAMP),
-        },
-      ],
-    };
-  });
-
-  return (
-    <Animated.View
-      style={[
-        styles.moreAvatar,
-        {
-          left: CARD_CONTENT_LEFT + index * CARD_AVATAR_STEP,
-          top: CARD_AVATAR_TOP,
-        },
-        overflowStyle,
-      ]}
-    >
-      <Text style={styles.moreAvatarText}>+</Text>
-    </Animated.View>
+      {hasOverflow && (
+        <View style={[styles.avatar, styles.avatarOverlap, styles.moreAvatar]}>
+          <Text style={styles.moreAvatarText}>+</Text>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -175,8 +97,6 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
   const layout = getEventPinLayout(event);
   const attendees = Array.isArray(event.attendingFriends) ? event.attendingFriends : [];
-  const morphAvatars = attendees.slice(0, 4);
-  const hasOverflow = attendees.length > 4;
   const price = event.price?.toUpperCase?.() ?? "";
 
   useEffect(() => {
@@ -381,19 +301,6 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         style={[styles.thumbnail, thumbnailStyle]}
       />
 
-      {morphAvatars.map((friend, index) => (
-        <MorphingAvatar
-          friend={friend}
-          hasOverflow={hasOverflow}
-          index={index}
-          key={friend.id || `${friend.name}-${index}`}
-          layout={layout}
-          progress={progress}
-        />
-      ))}
-
-      {hasOverflow && <OverflowAvatar index={3} progress={progress} />}
-
       <Animated.View
         pointerEvents="box-none"
         style={[styles.cardContent, cardContentStyle]}
@@ -424,7 +331,12 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         <Text numberOfLines={2} style={styles.address}>
           {event.locationName}
         </Text>
+
         <Text style={styles.price}>{price}</Text>
+
+        <View style={styles.footerRow}>
+          <PreviewAttendeeStack attendees={attendees} />
+        </View>
 
         <Pressable
           accessibilityLabel={`Open details for ${event.title}`}
@@ -473,26 +385,38 @@ const styles = StyleSheet.create({
     position: "absolute",
     zIndex: 3,
   },
-  morphAvatar: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: colors.secondary,
-    justifyContent: "center",
-    overflow: "hidden",
+  footerRow: {
+    alignItems: "flex-end",
+    bottom: 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    left: 0,
     position: "absolute",
-    zIndex: 6,
+    right: DETAILS_BUTTON_WIDTH + 10,
   },
-  moreAvatar: {
+  avatarStack: {
     alignItems: "center",
-    backgroundColor: colors.iconMuted,
+    flexDirection: "row",
+    minHeight: 26,
+  },
+  emptyStack: {
+    minHeight: 26,
+    width: 24,
+  },
+  avatar: {
     borderColor: colors.surface,
     borderRadius: CARD_AVATAR_SIZE / 2,
     borderWidth: CARD_AVATAR_BORDER_WIDTH,
     height: CARD_AVATAR_SIZE,
-    justifyContent: "center",
-    position: "absolute",
     width: CARD_AVATAR_SIZE,
-    zIndex: 7,
+  },
+  avatarOverlap: {
+    marginLeft: -CARD_AVATAR_OVERLAP,
+  },
+  moreAvatar: {
+    alignItems: "center",
+    backgroundColor: colors.iconMuted,
+    justifyContent: "center",
   },
   moreAvatarText: {
     color: colors.surface,
