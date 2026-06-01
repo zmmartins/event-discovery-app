@@ -29,7 +29,7 @@ import { getAvatarImage, getEventImage } from "../utils/imageAssets";
 import { getSessionEventPinLayout } from "./EventPin";
 
 const DEFAULT_CARD_HEIGHT = 300;
-const CARD_RADIUS = 14;
+const CARD_RADIUS = 0;
 const CARD_PADDING = 12;
 
 const IMAGE_HEIGHT = 150;
@@ -225,25 +225,6 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     ],
   }));
 
-  const tailStyle = useAnimatedStyle(() => {
-    const value = progress.value;
-
-    return {
-      borderLeftWidth: geometry.tailWidth / 2,
-      borderRightWidth: geometry.tailWidth / 2,
-      borderTopColor: CARD_SURFACE_COLOR,
-      borderTopWidth: interpolate(
-        value,
-        [0, 0.7, 1],
-        [0, 0, geometry.tailHeight],
-        Extrapolation.CLAMP
-      ),
-      left: geometry.tailLeft,
-      opacity: interpolate(value, [0.65, 1], [0, 1], Extrapolation.CLAMP),
-      top: geometry.tailTop,
-    };
-  }, [geometry.tailHeight, geometry.tailLeft, geometry.tailTop, geometry.tailWidth]);
-
   const saveIconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: saveScale.value }],
   }));
@@ -343,7 +324,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         pointerEvents="box-none"
         style={[styles.cardContent, cardContentStyle]}
       >
-        <View>
+        <View style={styles.contentInfo}>
           <View style={styles.titleRow}>
             <Text numberOfLines={2} style={styles.title}>
               {event.title}
@@ -382,8 +363,6 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
           </Pressable>
         </View>
       </Animated.View>
-
-      <Animated.View pointerEvents="none" style={[styles.tail, tailStyle]} />
     </Animated.View>
   );
 });
@@ -431,26 +410,20 @@ const styles = StyleSheet.create({
     padding: 0,
     width: 34,
   },
-  tail: {
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    height: 0,
-    position: "absolute",
-    width: 0,
-    zIndex: 2,
-  },
   pressed: {
     opacity: 0.72,
   },
 
   cardContent: {
-    bottom: CARD_PADDING + 10,
-    justifyContent: "space-between",
+    bottom: CARD_PADDING,
     left: CARD_PADDING,
     position: "absolute",
     right: CARD_PADDING,
     top: IMAGE_HEIGHT + 18,
     zIndex: 5,
+  },
+  contentInfo: {
+    paddingBottom: CTA_HEIGHT + 18,
   },
 
   titleRow: {
@@ -517,7 +490,10 @@ const styles = StyleSheet.create({
   },
 
   ctaRow: {
-    paddingTop: 14,
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
   },
 
   detailsButton: {

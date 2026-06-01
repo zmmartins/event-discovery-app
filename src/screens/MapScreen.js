@@ -42,12 +42,17 @@ const LISBON_REGION = {
 
 const PREVIEW_HORIZONTAL_PADDING = 20;
 const PREVIEW_MAX_WIDTH = 380;
-const PREVIEW_BASE_CARD_HEIGHT = 300;
-const PREVIEW_TITLE_WRAP_EXTRA_HEIGHT = 28;
-const PREVIEW_ADDRESS_WRAP_EXTRA_HEIGHT = 20;
-const PREVIEW_MAX_CARD_HEIGHT = 360;
-const PREVIEW_TAIL_HEIGHT = 12;
-const PREVIEW_TAIL_WIDTH = 26;
+const PREVIEW_BASE_CARD_HEIGHT = 360;
+const PREVIEW_IMAGE_HEIGHT = 150;
+const PREVIEW_CONTENT_TOP_GAP = 18;
+const PREVIEW_TITLE_LINE_HEIGHT = 24;
+const PREVIEW_ADDRESS_LINE_HEIGHT = 20;
+const PREVIEW_DATE_HEIGHT = 20;
+const PREVIEW_INFO_GAP = 8;
+const PREVIEW_CTA_TOP_GAP = 18;
+const PREVIEW_CTA_HEIGHT = 38;
+const PREVIEW_BOTTOM_PADDING = 28;
+const PREVIEW_MAX_CARD_HEIGHT = 440;
 
 const LOCATION_CENTER_ANIMATION_MS = 700;
 const EVENT_CENTER_ANIMATION_MS = 100;
@@ -118,35 +123,48 @@ function isRegionCenteredOnCoordinate(region, coordinate) {
   );
 }
 
-function getPreviewCardHeight(event) {
-  const titleLength = String(event?.title ?? "").length;
-  const locationLength = String(event?.locationName ?? "").length;
+function getEstimatedLineCount(text, charsPerLine, maxLines) {
+  const length = String(text ?? "").trim().length;
 
-  const titleExtra = titleLength > 28 ? PREVIEW_TITLE_WRAP_EXTRA_HEIGHT : 0;
-  const addressExtra = locationLength > 34 ? PREVIEW_ADDRESS_WRAP_EXTRA_HEIGHT : 0;
+  if (length <= 0) return 1;
+
+  return clamp(Math.ceil(length / charsPerLine), 1, maxLines);
+}
+
+function getPreviewCardHeight(event) {
+  const titleLines = getEstimatedLineCount(event?.title, 18, 2);
+  const addressLines = getEstimatedLineCount(event?.locationName, 34, 2);
+
+  const estimatedHeight =
+    PREVIEW_IMAGE_HEIGHT +
+    PREVIEW_CONTENT_TOP_GAP +
+    titleLines * PREVIEW_TITLE_LINE_HEIGHT +
+    PREVIEW_INFO_GAP +
+    addressLines * PREVIEW_ADDRESS_LINE_HEIGHT +
+    PREVIEW_DATE_HEIGHT +
+    PREVIEW_CTA_TOP_GAP +
+    PREVIEW_CTA_HEIGHT +
+    PREVIEW_BOTTOM_PADDING;
 
   return clamp(
-    PREVIEW_BASE_CARD_HEIGHT + titleExtra + addressExtra,
+    estimatedHeight,
     PREVIEW_BASE_CARD_HEIGHT,
     PREVIEW_MAX_CARD_HEIGHT
   );
 }
 
-function getPreviewGeometry({ event, pinLayout, screenWidth, startPoint }) {
+function getPreviewGeometry({ event, pinLayout, screenHeight, screenWidth, startPoint }) {
   const cardHeight = getPreviewCardHeight(event);
-  const previewHeight = cardHeight + PREVIEW_TAIL_HEIGHT;
   const previewWidth = Math.min(
     PREVIEW_MAX_WIDTH,
     screenWidth - PREVIEW_HORIZONTAL_PADDING * 2
   );
 
-  const left = clamp(
-    startPoint.x - previewWidth / 2,
+  const left = (screenWidth - previewWidth) / 2;
+  const top = Math.max(
     PREVIEW_HORIZONTAL_PADDING,
-    screenWidth - PREVIEW_HORIZONTAL_PADDING - previewWidth
+    (screenHeight - cardHeight) / 2
   );
-
-  const top = startPoint.y - cardHeight - PREVIEW_TAIL_HEIGHT;
 
   return {
     cardHeight,
@@ -155,15 +173,10 @@ function getPreviewGeometry({ event, pinLayout, screenWidth, startPoint }) {
     cloneTop: startPoint.y - pinLayout.outerSize / 2,
     cloneWidth: pinLayout.outerSize,
 
-    height: previewHeight,
+    height: cardHeight,
     left,
     top,
     width: previewWidth,
-
-    tailHeight: PREVIEW_TAIL_HEIGHT,
-    tailLeft: startPoint.x - left - PREVIEW_TAIL_WIDTH / 2,
-    tailTop: cardHeight,
-    tailWidth: PREVIEW_TAIL_WIDTH,
   };
 }
 
@@ -502,6 +515,7 @@ export default function MapScreen() {
       const nextPreviewGeometry = getPreviewGeometry({
         event,
         pinLayout,
+        screenHeight,
         screenWidth,
         startPoint,
       });
