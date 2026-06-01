@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -49,6 +49,8 @@ const PREVIEW_TAIL_HEIGHT = 12;
 const PREVIEW_TAIL_WIDTH = 26;
 
 const LOCATION_CENTER_ANIMATION_MS = 700;
+const EVENT_CENTER_ANIMATION_MS = 100;
+const EVENT_CENTER_TOLERANCE_METERS = 30;
 const USER_CENTER_TOLERANCE_METERS = 80;
 
 let hasAutoCenteredOnUserThisSession = false;
@@ -252,6 +254,9 @@ export default function MapScreen() {
   const currentRegionRef = useRef(LISBON_REGION);
   const morphPreviewRef = useRef(null);
   const pendingInitialLocationRegionRef = useRef(null);
+  const pendingPreviewEventRef = useRef(null);
+  const eventCenterTimeoutRef = useRef(null);
+  const isRecenteringOnEventRef = useRef(false);
 
   const [events, setEvents] = useState([]);
   const [locationStatus, setLocationStatus] = useState(
@@ -268,6 +273,25 @@ export default function MapScreen() {
   useInteractionLogger(LOG_ACTIONS.mapViewOpened, {
     screen: "MapScreen",
   });
+
+  useEffect(() => {
+    return () => {
+      if (eventCenterTimeoutRef.current) {
+        clearTimeout(eventCenterTimeoutRef.current);
+        eventCenterTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  const cancelPendingEventPreview = useCallback(() => {
+    pendingPreviewEventRef.current = null;
+    isRecenteringOnEventRef.current = false;
+
+    if (eventCenterTimeoutRef.current) {
+      clearTimeout(eventCenterTimeoutRef.current);
+      eventCenterTimeoutRef.current = null;
+    }
+  }, []);
 
   const centerMapOnRegion = useCallback((region, duration) => {
     currentRegionRef.current = region;
@@ -348,10 +372,11 @@ export default function MapScreen() {
 
       return () => {
         isActive = false;
+        cancelPendingEventPreview();
         setPreviewGeometry(null);
         setSelectedEvent(null);
       };
-    }, [filterDiscoveryEvents])
+    }, [cancelPendingEventPreview, filterDiscoveryEvents])
   );
 
   useFocusEffect(
@@ -436,50 +461,7 @@ export default function MapScreen() {
     currentRegionRef.current = region;
   }, []);
 
-  const handleRegionChangeComplete = useCallback(
-    (region) => {
-      currentRegionRef.current = region;
-      const isCenteredOnUser = isRegionCenteredOnCoordinate(region, userLocation);
-
-      if (isCenteredOnUser) {
-        isRecenteringOnUserRef.current = false;
-        setIsMapCenteredOnUser(true);
-      } else if (!isRecenteringOnUserRef.current) {
-        setIsMapCenteredOnUser(false);
-      }
-    },
-    [userLocation]
-  );
-
-  const handleMapReady = useCallback(() => {
-    isMapReadyRef.current = true;
-
-    if (pendingInitialLocationRegionRef.current) {
-      mapRef.current?.animateToRegion(
-        pendingInitialLocationRegionRef.current,
-        LOCATION_CENTER_ANIMATION_MS
-      );
-      pendingInitialLocationRegionRef.current = null;
-      return;
-    }
-  }, []);
-
-  const handleMapPress = useCallback(() => {
-    if (selectedEvent) {
-      closePreview("map_press");
-    }
-  }, [closePreview, selectedEvent]);
-
-  const handleMapPanDrag = useCallback(() => {
-    isRecenteringOnUserRef.current = false;
-    setIsMapCenteredOnUser(false);
-
-    if (selectedEvent) {
-      closePreview("map_pan");
-    }
-  }, [closePreview, selectedEvent]);
-
-  const handlePinPress = useCallback(
+  const openPreviewForEvent = useCallback(
     async (event) => {
       const coordinate = {
         latitude: event.latitude,
@@ -512,15 +494,140 @@ export default function MapScreen() {
         startPoint,
       });
 
-      isRecenteringOnUserRef.current = false;
       setPreviewGeometry(nextPreviewGeometry);
       setSelectedEvent(event);
       setIsMapCenteredOnUser(
         isRegionCenteredOnCoordinate(currentRegionRef.current, userLocation)
       );
+    },
+    [screenHeight, screenWidth, userLocation]
+  );
 
-      // Intentionally do not recenter the map when opening a pin preview.
-      // Keeping the map stable preserves the morph illusion between pin and preview.
+  const handleRegionChangeComplete = useCallback(
+    (region) => {
+      currentRegionRef.current = region;
+
+      const pendingPreviewEvent = pendingPreviewEventRef.current;
+
+      if (pendingPreviewEvent && isRecenteringOnEventRef.current) {
+        const eventCoordinate = {
+          latitude: pendingPreviewEvent.latitude,
+          longitude: pendingPreviewEvent.longitude,
+        };
+
+        const isCenteredOnEvent =
+          getCoordinateDistanceMeters(
+            {
+              latitude: region.latitude,
+              longitude: region.longitude,
+            },
+            eventCoordinate
+          ) <= EVENT_CENTER_TOLERANCE_METERS;
+
+        if (isCenteredOnEvent) {
+          if (eventCenterTimeoutRef.current) {
+            clearTimeout(eventCenterTimeoutRef.current);
+            eventCenterTimeoutRef.current = null;
+          }
+
+          pendingPreviewEventRef.current = null;
+          isRecenteringOnEventRef.current = false;
+          openPreviewForEvent(pendingPreviewEvent);
+          return;
+        }
+      }
+
+      const isCenteredOnUser = isRegionCenteredOnCoordinate(region, userLocation);
+
+      if (isCenteredOnUser) {
+        isRecenteringOnUserRef.current = false;
+        setIsMapCenteredOnUser(true);
+      } else if (!isRecenteringOnUserRef.current && !isRecenteringOnEventRef.current) {
+        setIsMapCenteredOnUser(false);
+      }
+    },
+    [openPreviewForEvent, userLocation]
+  );
+
+  const handleMapReady = useCallback(() => {
+    isMapReadyRef.current = true;
+
+    if (pendingInitialLocationRegionRef.current) {
+      mapRef.current?.animateToRegion(
+        pendingInitialLocationRegionRef.current,
+        LOCATION_CENTER_ANIMATION_MS
+      );
+      pendingInitialLocationRegionRef.current = null;
+      return;
+    }
+  }, []);
+
+  const handleMapPress = useCallback(() => {
+    cancelPendingEventPreview();
+
+    if (selectedEvent) {
+      closePreview("map_press");
+    }
+  }, [cancelPendingEventPreview, closePreview, selectedEvent]);
+
+  const handleMapPanDrag = useCallback(() => {
+    cancelPendingEventPreview();
+    isRecenteringOnUserRef.current = false;
+    setIsMapCenteredOnUser(false);
+
+    if (selectedEvent) {
+      closePreview("map_pan");
+    }
+  }, [cancelPendingEventPreview, closePreview, selectedEvent]);
+
+  const handlePinPress = useCallback(
+    async (event) => {
+      const coordinate = {
+        latitude: event.latitude,
+        longitude: event.longitude,
+      };
+
+      if (selectedEvent) {
+        setPreviewGeometry(null);
+        setSelectedEvent(null);
+      }
+
+      pendingPreviewEventRef.current = event;
+      isRecenteringOnEventRef.current = true;
+      isRecenteringOnUserRef.current = false;
+      setIsMapCenteredOnUser(false);
+
+      const currentRegion = currentRegionRef.current || LISBON_REGION;
+
+      const nextRegion = {
+        latitude: coordinate.latitude,
+        latitudeDelta: currentRegion.latitudeDelta || LISBON_REGION.latitudeDelta,
+        longitude: coordinate.longitude,
+        longitudeDelta: currentRegion.longitudeDelta || LISBON_REGION.longitudeDelta,
+      };
+
+      currentRegionRef.current = nextRegion;
+
+      if (isMapReadyRef.current && mapRef.current) {
+        mapRef.current.animateToRegion(nextRegion, EVENT_CENTER_ANIMATION_MS);
+      } else {
+        pendingInitialLocationRegionRef.current = nextRegion;
+      }
+
+      if (eventCenterTimeoutRef.current) {
+        clearTimeout(eventCenterTimeoutRef.current);
+      }
+
+      eventCenterTimeoutRef.current = setTimeout(() => {
+        eventCenterTimeoutRef.current = null;
+
+        if (pendingPreviewEventRef.current?.id === event.id) {
+          const pendingEvent = pendingPreviewEventRef.current;
+          pendingPreviewEventRef.current = null;
+          isRecenteringOnEventRef.current = false;
+          openPreviewForEvent(pendingEvent);
+        }
+      }, EVENT_CENTER_ANIMATION_MS);
 
       logInteraction(LOG_ACTIONS.eventPinSelected, {
         eventId: event.id,
@@ -529,12 +636,7 @@ export default function MapScreen() {
         source: "map_pin",
       }).catch(() => null);
     },
-    [
-      pathname,
-      screenHeight,
-      screenWidth,
-      userLocation,
-    ]
+    [openPreviewForEvent, pathname, selectedEvent]
   );
 
   const handleMarkerPress = useCallback(
@@ -566,19 +668,14 @@ export default function MapScreen() {
     });
   }, [pathname, router, selectedEvent]);
 
-  const handlePreviewSavedChange = useCallback(
-    (updatedEvent) => {
-      if (!updatedEvent) return;
+  const handlePreviewSavedChange = useCallback((updatedEvent) => {
+    if (!updatedEvent) return;
 
-      setSelectedEvent(updatedEvent);
-      setEvents((currentEvents) =>
-        currentEvents.map((event) =>
-          event.id === updatedEvent.id ? updatedEvent : event
-        )
-      );
-    },
-    []
-  );
+    setSelectedEvent(updatedEvent);
+    setEvents((currentEvents) =>
+      currentEvents.map((event) => (event.id === updatedEvent.id ? updatedEvent : event))
+    );
+  }, []);
 
   const handleDiscoverDismiss = useCallback(() => {
     closePreview("discover_disabled");
@@ -590,6 +687,8 @@ export default function MapScreen() {
   }, [closePreview, deactivateDiscoveryMode, pathname]);
 
   const handleLocationStatusPress = useCallback(() => {
+    cancelPendingEventPreview();
+
     logInteraction(LOG_ACTIONS.userLocationRecentered, {
       route: pathname,
       screen: "MapScreen",
@@ -615,6 +714,7 @@ export default function MapScreen() {
     });
   }, [
     applyLocationResult,
+    cancelPendingEventPreview,
     centerMapOnUser,
     pathname,
     userLocation,
