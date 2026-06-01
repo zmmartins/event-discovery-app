@@ -1,14 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { usePathname } from "expo-router";
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
@@ -22,36 +14,96 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 import { getAvatarImage, getEventImage } from "../utils/imageAssets";
 import { getSessionEventPinLayout } from "./EventPin";
 
-const DEFAULT_CARD_HEIGHT = 300;
-const CARD_RADIUS = 0;
-const CARD_PADDING = 12;
+const DEFAULT_CARD_HEIGHT = 520;
+const CARD_RADIUS = 4;
 
-const DEFAULT_IMAGE_HEIGHT = 400;
-const CONTENT_TOP_GAP = 18;
+const DEFAULT_IMAGE_SIZE = 272;
 
-const PRICE_BADGE_HEIGHT = 28;
-const CTA_HEIGHT = 38;
-const SIDE_COLUMN_WIDTH = 94;
-const SIDE_COLUMN_RIGHT_INSET = 14;
+const POSTER_PADDING = 14;
+const POSTER_TOP_PADDING = 16;
+const POSTER_HEADER_HEIGHT = 150;
+const POSTER_IMAGE_GAP = 14;
+const POSTER_BOTTOM_GAP = 14;
+const POSTER_META_HEIGHT = 58;
+const POSTER_BOTTOM_PADDING = 16;
 
-const CARD_AVATAR_SIZE = 26;
+const POSTER_TITLE_FONT_SIZE = 31;
+const POSTER_TITLE_LINE_HEIGHT = 31;
+
+const ACTION_BUTTON_SIZE = 48;
+const ACTION_ICON_SIZE = 34;
+
+const CARD_AVATAR_SIZE = 24;
 const CARD_AVATAR_BORDER_WIDTH = 1.5;
-const CARD_AVATAR_OVERLAP = 10;
+const CARD_AVATAR_OVERLAP = 9;
 
 const PIN_SURFACE_COLOR = colors.primary;
 const CARD_SURFACE_COLOR = colors.primary;
 const CARD_BORDER_COLOR = colors.primary;
-const IMAGE_BORDER_WIDTH = 3;
+const IMAGE_BORDER_WIDTH = StyleSheet.hairlineWidth;
 const IMAGE_BORDER_COLOR = colors.primary;
 
 const ACTION_BACKGROUND_COLOR = colors.text;
 const ACTION_TEXT_COLOR = colors.surface;
+
+const POSTER_MONTH_LABELS = [
+  "JAN",
+  "FEB",
+  "MAR",
+  "APR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AUG",
+  "SEP",
+  "OCT",
+  "NOV",
+  "DEC",
+];
+
+function formatPosterTime(value) {
+  const rawTime = String(value ?? "").trim();
+  if (!rawTime) return "";
+
+  const [rawHour, rawMinute] = rawTime.split(":");
+  const hourNumber = Number(rawHour);
+
+  if (!Number.isFinite(hourNumber)) {
+    return rawTime.toUpperCase();
+  }
+
+  const hourLabel = String(hourNumber).padStart(2, "0");
+  const minuteLabel =
+    rawMinute && rawMinute !== "00" ? String(rawMinute).padStart(2, "0") : "";
+
+  return `${hourLabel}H${minuteLabel}`;
+}
+
+function getPosterDateParts(event) {
+  const rawDate = String(event?.date ?? "").trim();
+  const [year, month, day] = rawDate.split("-");
+  const timeLabel = formatPosterTime(event?.time);
+
+  if (!year || !month || !day) {
+    return {
+      main: event?.dateLabel ? String(event.dateLabel).toUpperCase() : "DATE TBA",
+      sub: timeLabel,
+    };
+  }
+
+  const monthLabel = POSTER_MONTH_LABELS[Number(month) - 1] ?? month.toUpperCase();
+  const dayLabel = String(day).padStart(2, "0");
+
+  return {
+    main: `${monthLabel} ${dayLabel}`,
+    sub: [year, timeLabel].filter(Boolean).join(" | "),
+  };
+}
 
 function PreviewAttendeeStack({ attendees }) {
   const safeAttendees = Array.isArray(attendees) ? attendees : [];
@@ -90,7 +142,6 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     geometry,
     onCloseComplete,
     onOpen,
-    onSavedChange,
     screen = "MapScreen",
     source = "map_preview",
   },
@@ -98,20 +149,35 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 ) {
   const pathname = usePathname();
   const progress = useSharedValue(0);
-  const saveScale = useSharedValue(1);
   const closeReasonRef = useRef(null);
   const isClosingRef = useRef(false);
-  const [isSaved, setIsSaved] = useState(Boolean(event.isSaved));
 
   const layout = getSessionEventPinLayout(event);
   const attendees = Array.isArray(event.attendingFriends) ? event.attendingFriends : [];
   const finalCardHeight = geometry.cardHeight ?? DEFAULT_CARD_HEIGHT;
-  const finalImageHeight = geometry.imageHeight ?? DEFAULT_IMAGE_HEIGHT;
-  const price = event.price?.toUpperCase?.() ?? "";
+  const finalImageSize = geometry.imageSize ?? DEFAULT_IMAGE_SIZE;
+  const posterPadding = geometry.posterPadding ?? POSTER_PADDING;
+  const posterTopPadding = geometry.posterTopPadding ?? POSTER_TOP_PADDING;
+  const posterHeaderHeight = geometry.posterHeaderHeight ?? POSTER_HEADER_HEIGHT;
+  const posterImageGap = geometry.posterImageGap ?? POSTER_IMAGE_GAP;
+  const posterBottomGap = geometry.posterBottomGap ?? POSTER_BOTTOM_GAP;
+  const posterMetaHeight = geometry.posterMetaHeight ?? POSTER_META_HEIGHT;
+  const posterBottomPadding = geometry.posterBottomPadding ?? POSTER_BOTTOM_PADDING;
 
-  useEffect(() => {
-    setIsSaved(Boolean(event.isSaved));
-  }, [event.id, event.isSaved]);
+  const imageTop = posterTopPadding + posterHeaderHeight + posterImageGap;
+  const naturalFooterTop = imageTop + finalImageSize + posterBottomGap;
+  const footerTop = Math.max(
+    naturalFooterTop,
+    finalCardHeight - posterBottomPadding - posterMetaHeight
+  );
+
+  const title = String(event.title ?? "").toUpperCase();
+  const priceLabel = event.price?.toUpperCase?.() ?? "";
+  const entranceLabel = [priceLabel, "ENTRADA"].filter(Boolean).join(" | ");
+  const addressLabel = event.locationName ?? "";
+  const organizerName =
+    event.organizerName ?? event.establishmentName ?? event.hostName ?? "LisTunes";
+  const posterDate = getPosterDateParts(event);
 
   useEffect(() => {
     isClosingRef.current = false;
@@ -197,41 +263,30 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     return {
       borderBottomLeftRadius: interpolate(value, [0, 1], [layout.circleSize / 2, 0]),
       borderBottomRightRadius: interpolate(value, [0, 1], [layout.circleSize / 2, 0]),
-      borderTopLeftRadius: interpolate(
-        value,
-        [0, 1],
-        [layout.circleSize / 2, CARD_RADIUS]
-      ),
-      borderTopRightRadius: interpolate(
-        value,
-        [0, 1],
-        [layout.circleSize / 2, CARD_RADIUS]
-      ),
-      height: interpolate(value, [0, 1], [layout.circleSize, finalImageHeight]),
-      left: interpolate(value, [0, 1], [layout.circleOffset, 0]),
+      borderTopLeftRadius: interpolate(value, [0, 1], [layout.circleSize / 2, 0]),
+      borderTopRightRadius: interpolate(value, [0, 1], [layout.circleSize / 2, 0]),
+      height: interpolate(value, [0, 1], [layout.circleSize, finalImageSize]),
+      left: interpolate(value, [0, 1], [layout.circleOffset, posterPadding]),
       overflow: "hidden",
-      top: interpolate(value, [0, 1], [layout.circleOffset, 0]),
-      width: interpolate(value, [0, 1], [layout.circleSize, geometry.width]),
+      top: interpolate(value, [0, 1], [layout.circleOffset, imageTop]),
+      width: interpolate(value, [0, 1], [layout.circleSize, finalImageSize]),
     };
-  }, [finalImageHeight, geometry.width, layout.circleOffset, layout.circleSize]);
+  }, [finalImageSize, imageTop, layout.circleOffset, layout.circleSize, posterPadding]);
 
   const imageBorderStyle = useAnimatedStyle(() => {
     const value = progress.value;
 
     return {
-      borderBottomWidth: 0,
       borderColor: IMAGE_BORDER_COLOR,
-      borderLeftWidth: interpolate(value, [0, 1], [0, IMAGE_BORDER_WIDTH]),
-      borderRightWidth: interpolate(value, [0, 1], [0, IMAGE_BORDER_WIDTH]),
-      borderTopWidth: interpolate(value, [0, 1], [0, IMAGE_BORDER_WIDTH]),
-      height: interpolate(value, [0, 1], [layout.circleSize, finalImageHeight]),
-      left: interpolate(value, [0, 1], [layout.circleOffset, 0]),
-      top: interpolate(value, [0, 1], [layout.circleOffset, 0]),
-      width: interpolate(value, [0, 1], [layout.circleSize, geometry.width]),
+      borderWidth: interpolate(value, [0, 1], [0, IMAGE_BORDER_WIDTH]),
+      height: interpolate(value, [0, 1], [layout.circleSize, finalImageSize]),
+      left: interpolate(value, [0, 1], [layout.circleOffset, posterPadding]),
+      top: interpolate(value, [0, 1], [layout.circleOffset, imageTop]),
+      width: interpolate(value, [0, 1], [layout.circleSize, finalImageSize]),
     };
-  }, [finalImageHeight, geometry.width, layout.circleOffset, layout.circleSize]);
+  }, [finalImageSize, imageTop, layout.circleOffset, layout.circleSize, posterPadding]);
 
-  const cardContentStyle = useAnimatedStyle(() => ({
+  const posterContentStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
       progress.value,
       [0.42, 0.72, 1],
@@ -244,65 +299,6 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
       },
     ],
   }));
-
-  const cardContentPositionStyle = useAnimatedStyle(() => ({
-    top: interpolate(
-      progress.value,
-      [0, 1],
-      [layout.circleOffset + layout.circleSize, finalImageHeight + CONTENT_TOP_GAP],
-      Extrapolation.CLAMP
-    ),
-  }));
-
-  const saveIconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: saveScale.value }],
-  }));
-
-  const saveButtonStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      progress.value,
-      [0.45, 0.75, 1],
-      [0, 0.6, 1],
-      Extrapolation.CLAMP
-    ),
-    transform: [
-      {
-        scale: interpolate(progress.value, [0.45, 1], [0.92, 1], Extrapolation.CLAMP),
-      },
-    ],
-  }));
-
-  function animateSavePulse() {
-    saveScale.value = 0.82;
-    saveScale.value = withSpring(1, {
-      damping: 8,
-      mass: 0.45,
-      stiffness: 320,
-    });
-  }
-
-  async function handleSavePress() {
-    const nextIsSaved = !isSaved;
-
-    setIsSaved(nextIsSaved);
-    animateSavePulse();
-    Haptics.selectionAsync().catch(() => null);
-
-    try {
-      const updatedEvent = await toggleSavedEvent(event.id);
-      setIsSaved(Boolean(updatedEvent?.isSaved));
-      onSavedChange?.(updatedEvent);
-      logInteraction(LOG_ACTIONS.eventBookmarkToggled, {
-        eventId: event.id,
-        isSaved: Boolean(updatedEvent?.isSaved),
-        route: pathname,
-        screen,
-        source,
-      }).catch(() => null);
-    } catch {
-      setIsSaved(!nextIsSaved);
-    }
-  }
 
   function handleOpenPress() {
     logInteraction(LOG_ACTIONS.eventCardPressed, {
@@ -328,72 +324,81 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
       <Animated.View style={[styles.thumbnailClip, thumbnailClipStyle]}>
         <Animated.Image
-          accessibilityLabel={`${event.title} thumbnail`}
+          accessibilityLabel={`${title} thumbnail`}
           resizeMode="cover"
           source={getEventImage(event.thumbnailKey)}
           style={styles.thumbnail}
         />
       </Animated.View>
 
-      <Animated.View style={[styles.saveButtonOverlay, saveButtonStyle]}>
-        <Pressable
-          accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
-          accessibilityRole="button"
-          accessibilityState={{ selected: isSaved }}
-          hitSlop={10}
-          onPress={handleSavePress}
-          style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
-        >
-          <Animated.View style={saveIconStyle}>
-            <Ionicons
-              name={isSaved ? "bookmark" : "bookmark-outline"}
-              size={30}
-              color={colors.surface}
-            />
-          </Animated.View>
-        </Pressable>
-      </Animated.View>
-
       <Animated.View
         pointerEvents="box-none"
-        style={[styles.cardContent, cardContentPositionStyle, cardContentStyle]}
+        style={[styles.posterContent, posterContentStyle]}
       >
-        <View style={styles.contentInfo}>
-          <View style={styles.titleRow}>
-            <Text numberOfLines={2} style={styles.title}>
-              {String(event.title ?? "").toUpperCase()}
+        <View
+          style={[
+            styles.posterHeader,
+            {
+              height: posterHeaderHeight,
+              left: posterPadding,
+              right: posterPadding,
+              top: posterTopPadding,
+            },
+          ]}
+        >
+          <View style={styles.posterTitleColumn}>
+            <Text numberOfLines={3} style={styles.posterTitle}>
+              {title}
             </Text>
 
-            <View style={styles.sideColumn}>
-              <View style={styles.priceBadge}>
-                <Text style={styles.priceBadgeText}>{price}</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.infoRow}>
-            <View style={styles.metaColumn}>
-              <Text numberOfLines={2} style={styles.address}>
-                {event.locationName}
-              </Text>
-
-              <Text style={styles.dateText}>{event.dateLabel ?? "APR 24, 2026"}</Text>
-            </View>
-
-            <View style={styles.sideColumn}>
+            <View style={styles.posterAvatarRow}>
               <PreviewAttendeeStack attendees={attendees} />
             </View>
           </View>
+
+          <View style={styles.posterRightColumn}>
+            <View style={styles.posterDateBlock}>
+              <View style={styles.posterDateTextGroup}>
+                <Text style={styles.posterDateMain}>{posterDate.main}</Text>
+                <Text style={styles.posterDateSub}>{posterDate.sub}</Text>
+              </View>
+            </View>
+
+            <Text numberOfLines={1} style={styles.organizerName}>
+              {organizerName}
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.ctaRow}>
+        <View
+          style={[
+            styles.posterFooter,
+            {
+              height: posterMetaHeight,
+              left: posterPadding,
+              right: posterPadding,
+              top: footerTop,
+            },
+          ]}
+        >
+          <View style={styles.posterMeta}>
+            <Text style={styles.posterMetaText}>{entranceLabel}</Text>
+            <Text numberOfLines={1} style={styles.posterMetaText}>
+              {addressLabel}
+            </Text>
+          </View>
+
           <Pressable
             accessibilityLabel={`Open details for ${event.title}`}
             accessibilityRole="button"
             onPress={handleOpenPress}
-            style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.arrowButton, pressed && styles.pressed]}
           >
-            <Text style={styles.detailsButtonText}>CHECK US OUT</Text>
+            <Ionicons
+              name="arrow-forward"
+              size={ACTION_ICON_SIZE}
+              color={colors.primary}
+            />
           </Pressable>
         </View>
       </Animated.View>
@@ -434,124 +439,104 @@ const styles = StyleSheet.create({
     height: "100%",
     width: "100%",
   },
-  saveButtonOverlay: {
-    position: "absolute",
-    right: CARD_PADDING + 10,
-    top: CARD_PADDING + 10,
-    zIndex: 7,
-  },
-  saveButton: {
-    alignItems: "center",
-    backgroundColor: "transparent",
-    height: 34,
-    justifyContent: "center",
-    padding: 0,
-    width: 34,
-  },
   pressed: {
     opacity: 0.72,
   },
-
-  cardContent: {
-    bottom: CARD_PADDING,
-    left: CARD_PADDING,
-    position: "absolute",
-    right: CARD_PADDING,
+  posterContent: {
+    ...StyleSheet.absoluteFillObject,
     zIndex: 5,
   },
-  contentInfo: {
-    paddingBottom: CTA_HEIGHT + 18,
-  },
-
-  titleRow: {
-    alignItems: "flex-start",
+  posterHeader: {
     flexDirection: "row",
-    gap: 10,
-  },
-
-  title: {
-    color: colors.text,
-    flex: 1,
-    fontSize: 21,
-    fontWeight: "900",
-    lineHeight: 24,
-    minWidth: 0,
-  },
-
-  priceBadge: {
-    alignItems: "center",
-    alignSelf: "flex-end",
-    backgroundColor: ACTION_BACKGROUND_COLOR,
-    borderRadius: 7,
-    height: PRICE_BADGE_HEIGHT,
-    justifyContent: "center",
-    minWidth: 58,
-    paddingHorizontal: 10,
-  },
-
-  priceBadgeText: {
-    color: ACTION_TEXT_COLOR,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  address: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "500",
-  },
-
-  dateText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "800",
-    marginTop: 8,
-  },
-
-  infoRow: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 8,
-  },
-
-  metaColumn: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  sideColumn: {
-    alignItems: "flex-end",
-    marginRight: SIDE_COLUMN_RIGHT_INSET,
-    width: SIDE_COLUMN_WIDTH,
-  },
-
-  ctaRow: {
-    bottom: 0,
-    left: 0,
     position: "absolute",
-    right: 0,
   },
-
-  detailsButton: {
-    alignItems: "center",
-    alignSelf: "stretch",
-    backgroundColor: ACTION_BACKGROUND_COLOR,
-    borderRadius: 10,
-    height: CTA_HEIGHT,
-    justifyContent: "center",
+  posterTitleColumn: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 8,
   },
-
-  detailsButtonText: {
-    color: ACTION_TEXT_COLOR,
+  posterTitle: {
+    color: colors.text,
+    fontSize: POSTER_TITLE_FONT_SIZE,
+    fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: POSTER_TITLE_LINE_HEIGHT,
+  },
+  posterAvatarRow: {
+    marginTop: 12,
+  },
+  posterRightColumn: {
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    width: 86,
+  },
+  posterDateBlock: {
+    height: 112,
+    overflow: "visible",
+    position: "relative",
+    width: 86,
+  },
+  posterDateTextGroup: {
+    alignItems: "flex-end",
+    position: "absolute",
+    right: -36,
+    top: 36,
+    transform: [{ rotate: "90deg" }],
+    width: 112,
+  },
+  posterDateMain: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: 25,
+  },
+  posterDateSub: {
+    color: colors.text,
     fontSize: 13,
     fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: 15,
+    marginTop: 2,
   },
-
+  organizerName: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: 23,
+    textAlign: "right",
+  },
+  posterFooter: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    position: "absolute",
+  },
+  posterMeta: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+  },
+  posterMetaText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0,
+    lineHeight: 18,
+  },
+  arrowButton: {
+    alignItems: "center",
+    backgroundColor: colors.text,
+    borderRadius: ACTION_BUTTON_SIZE / 2,
+    height: ACTION_BUTTON_SIZE,
+    justifyContent: "center",
+    width: ACTION_BUTTON_SIZE,
+  },
   avatarStack: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
     minHeight: CARD_AVATAR_SIZE,
   },
   emptyStack: {
@@ -575,8 +560,8 @@ const styles = StyleSheet.create({
   },
   moreAvatarText: {
     color: ACTION_TEXT_COLOR,
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "800",
-    lineHeight: 20,
+    lineHeight: 19,
   },
 });
