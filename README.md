@@ -2,87 +2,50 @@
 
 Functional mobile prototype for the course **Interactive Multimedia Applications 2025/2026**.
 
-This project implements a social local event discovery app focused on spontaneous exploration of nearby experiences. The app was designed first as a low-fidelity prototype, then as a high-fidelity Figma prototype, and is now being implemented as a functional mobile prototype.
+The app is a social local event discovery prototype for exploring nearby cultural experiences in Lisbon. It focuses on map/list discovery, social attendance context, a cultural-passport style profile, shake-to-discover interaction, location awareness, haptic/visual feedback, and interaction logging for usability testing.
 
-The current implementation uses **Expo + React Native + Expo Router**.
+## Current State
 
----
+The project is implemented with **Expo 54**, **React Native 0.81**, **React 19**, and **Expo Router 6**. The routing layer lives in `app/`; the actual screens, services, components, data, and theme files live in `src/`.
 
-## Project Goal
+Implemented core areas:
 
-The goal is to build a functional mobile prototype that demonstrates the core interaction flows of the app:
+- Native tab shell with Explore, Messages, Search, Community, and Profile tabs.
+- Nested Explore stack with map, list, shake-discover, and notifications routes.
+- Map exploration with event pins, user-location recentering, morphing event preview cards, save/bookmark support, and event-detail navigation.
+- List exploration with event cards, save/bookmark support, and Discover Mode filtering.
+- Event detail screen with a draggable sheet, event media, social context, save/bookmark, participate action, and haptic feedback.
+- Profile screen with list and map views for attended mock experiences.
+- Shake to Discover using the accelerometer, vibration/haptics, animated feedback, and Discover Mode activation.
+- Interaction logging with AsyncStorage persistence and JSON/CSV/bundle export helpers.
+- Placeholder tabs for Messages, Search, Community, and Notifications.
 
-- Discover local events.
-- Explore events through a map.
-- Explore events through a list.
-- Open event details.
-- Mark participation in an event.
-- Use device feedback such as visual feedback and haptic feedback.
-- Use mobile input mechanisms such as touch, accelerometer/shake, and location.
-- Collect interaction logs for usability testing.
+Not implemented as real product features:
 
-The final academic delivery must include:
+- Authentication.
+- Real backend.
+- Real event publishing.
+- Payments or ticketing.
+- Chat/messaging.
+- Push notifications.
+- Real image uploads.
 
-- Functional application code.
-- Screenshots of the prototype.
-- Justification of changes from previous prototype versions.
-- Usability tests with 5–6 users.
-- Photos of usability tests, with permission.
-- Descriptive statistics based on quantitative interaction logs.
-- Link to the online source code repository.
+## Tech Stack
 
----
+- Expo / Expo Go
+- React Native
+- Expo Router
+- JavaScript for app code, TypeScript route files
+- React Native Maps
+- Expo Location
+- Expo Sensors
+- Expo Haptics
+- Expo FileSystem and Sharing
+- Expo Glass Effect and native tabs
+- AsyncStorage
+- Mock local data
 
-## Concept
-
-The app is a **social local event discovery platform**.
-
-Unlike traditional event platforms that tend to highlight mainstream or highly promoted events, this app focuses on helping users discover both mainstream and niche local experiences.
-
-The app targets:
-
-- Local users looking for something spontaneous to do.
-- Travellers looking for authentic local experiences.
-- Small organizers, independent artists, local businesses, and community-driven events.
-
-The social component is centered on **events**, not personal vanity. A user profile acts as a kind of **cultural passport**, showing events the user plans to attend or has attended in the past.
-
----
-
-## Current Technical Stack
-
-- **Expo**
-- **React Native**
-- **Expo Router**
-- **JavaScript**
-- **AsyncStorage**
-- **Expo Haptics**
-- **Expo Sensors**
-- **Expo Location**
-- **React Native Maps**
-
-Expo Router is used as the routing system. It uses file-based routing, where files inside the `app/` directory define navigation routes.
-
----
-
-## Development Platform
-
-The project is developed in:
-
-- VS Code
-- Expo Go
-- GitHub
-
-Recommended VS Code extensions:
-
-- ESLint
-- Prettier
-- React Native Tools
-- GitLens
-
----
-
-## How to Run the Project
+## Run The Project
 
 Install dependencies:
 
@@ -90,583 +53,239 @@ Install dependencies:
 npm install
 ```
 
-Start the Expo development server:
+Start Expo:
 
 ```bash
-npx expo start
+npm run start
 ```
 
-If the QR code does not work properly on the local network, use:
+Useful scripts:
 
 ```bash
-npx expo start --tunnel
+npm run ios
+npm run android
+npm run web
+npm run lint
 ```
 
-To clear the Expo cache:
+Clear Expo cache:
 
 ```bash
 npx expo start -c
 ```
 
-Open the app using Expo Go on a physical device.
+Tunnel mode is useful when the physical device cannot reach the local development server:
 
-## Important Routing Note
+```bash
+npx expo start --tunnel
+```
 
-This project uses **Expo Router**.
+### Known Local Startup Issue
 
-The `app/` directory is used only as the routing layer. The actual screen implementations live in `src/screens`.
+On the current local setup, `npx expo start -c` has previously failed under Node `v22.21.0` with:
 
-Current route files:
+```text
+RangeError [ERR_SOCKET_BAD_PORT]: options.port should be >= 0 and < 65536. Received type number (65536).
+```
 
+This comes from Expo CLI's port probing through `freeport-async`, not from application code. If it appears, use a Node LTS version supported by the Expo SDK, for example Node 20, then rerun `npm install` if needed and start Expo again.
+
+## Configuration
+
+Location permission text and native identifiers are configured through `app.config.js`.
+
+Google Maps API keys are read from environment variables for native builds:
+
+```bash
+GOOGLE_MAPS_IOS_API_KEY=...
+GOOGLE_MAPS_ANDROID_API_KEY=...
+```
+
+The app falls back to a default Lisbon region when user location is unavailable or denied.
+
+## Routing
+
+Expo Router is the only navigation system used by screens. Route files stay thin and import/export screen implementations from `src/screens`.
+
+Current route structure:
+
+```text
 app/
-\_layout.tsx
-index.tsx
-list.tsx
-map.tsx
-profile.tsx
-event/
-[id].tsx
-
-The route files should remain thin indexers that import and export the corresponding screen from `src/screens`.
-
-Example:
-
-```TypeScript
-import ListScreen from "../src/screens/ListScreen";
-
-export default ListScreen;
+  _layout.tsx
+  event/
+    [id].tsx
+  (tabs)/
+    _layout.tsx
+    index.tsx
+    map/
+      _layout.tsx
+      index.tsx
+      list.tsx
+      notifications.tsx
+      shake-discover.tsx
+    list.tsx
+    notifications.tsx
+    shake-discover.tsx
+    messages.tsx
+    search.tsx
+    community.tsx
+    profile.tsx
 ```
 
-Dynamic event details use:
+Important routes:
 
-```
-app/event/[id].tsx
-```
+- `/` redirects to `/map`.
+- `/map` renders `MapScreen`.
+- `/map/list` renders `ListScreen`.
+- `/map/shake-discover` renders `ShakeDiscoverScreen`.
+- `/map/notifications` renders `NotificationsScreen`.
+- `/event/[id]` renders `EventDetailScreen`.
+- `/profile` renders `ProfileScreen`.
+- `/messages`, `/search`, and `/community` are placeholder tabs.
 
-This route should point to:
+Navigation to event details uses Expo Router:
 
-```
-src/screens/EventDetailScreen.js
-```
-
-The event detail screens hould read the event id using:
-
-```JavaScript
-import { useLocalSearchParams } from "expo-router";
-```
-
-Example:
-
-```JavaScript
-const { id } = useLocalSearchParams();
-```
-
-Navigation to an event detail page should use:
-
-```JavaScript
+```js
 router.push({
-    pathname: "/event/[id]",
-    params: { id: event.id },
+  pathname: "/event/[id]",
+  params: { id: event.id },
 });
 ```
 
-Do not use React Navigation's `navigation.navigate(...)` inside screens unless the project is intentionally migrated away from Expo Router.
+Event details read the route parameter with `useLocalSearchParams()`.
 
----
+## Project Structure
 
-## Current Project Structure
-
-```
-event-discovery-app/
-  app.config.js
-  app.json
-  package.json
-  tsconfig.json
-  expo-env.d.ts
-  list_project_structure.py
-  README.md
-  app/
-    _layout.tsx
-    (tabs)/
-      _layout.tsx
-      community.tsx
-      index.tsx
-      list.tsx
-      messages.tsx
-      notifications.tsx
-      profile.tsx
-      search.tsx
-      shake-discover.tsx
-      map/
-        _layout.tsx
-        index.tsx
-        list.tsx
-        notifications.tsx
-        shake-discover.tsx
-    event/
-      [id].tsx
-  src/
-    assets/
-      avatars/
-      events/
-    components/
-      AppShell.js
-      DiscoverModePill.js
-      EventCard.js
-      EventPin.js
-      ExperiencePin.js
-      PlaceholderScreen.js
-      ProfileExperienceCard.js
-      ScreenStatusBar.js
-      TopNav.js
-    context/
-      DiscoveryModeContext.js
-    data/
-      mockEvents.js
-      mockUsers.js
-    hooks/
-      useInteractionLogger.js
-      useShakeToDiscover.js
-    screens/
-      CommunityScreen.js
-      EventDetailScreen.js
-      ListScreen.js
-      MapScreen.js
-      MessagesScreen.js
-      NotificationsScreen.js
-      ProfileScreen.js
-      SearchScreen.js
-      ShakeDiscoverScreen.js
-    services/
-      eventService.js
-      interactionLogService.js
-      locationService.js
-      profileService.js
-      userService.js
-    theme/
-      colors.js
-      mapStyle.js
-      spacing.js
-    utils/
-      imageAssets.js
+```text
+app/                         File-based Expo Router routes
+src/assets/avatars/          Mock avatar images
+src/assets/events/           Mock event images
+src/components/              Reusable UI components
+src/context/                 Discovery Mode context
+src/data/                    Mock events and users
+src/hooks/                   Interaction and sensor hooks
+src/screens/                 Screen implementations
+src/services/                Data, logging, location, profile, user services
+src/theme/                   Colors, spacing, map style, glass constants
+src/utils/                   Image asset lookup helpers
 ```
 
----
-
-## Architecture Principles
-
-### 1. Keep `app/`as routing only
-
-Files inside `app/`should stay small and should not contain complex UI or business logic.
-
-Good:
-
-```TypeScript
-import MapScreen from "../src/screens/MapScreen";
-
-export default MapScreen;
-```
-
-Avoid putting full screen implementations directly inside `app/`.
-
----
-
-### 2. Keep screen logic in `src/screens`
-
-Main screens should live in:
-
-```
-src/screens/
-```
-
-Current planned screens:
+Core screens:
 
 - `MapScreen.js`
-- `ListScreenjs`
+- `ListScreen.js`
 - `EventDetailScreen.js`
 - `ProfileScreen.js`
+- `ShakeDiscoverScreen.js`
+- `MessagesScreen.js`
+- `SearchScreen.js`
+- `CommunityScreen.js`
+- `NotificationsScreen.js`
 
-Possible future screens:
+Core components:
 
-- `LogsScreen.js`
-- `DiscoverScreen.js`
-- `CreateEventScreen.js`
-- `SettingsScreen.js`
-
----
-
-### 3. Keep reusable UI in `src/components`
-
-Reusable visual elements should live in:
-
-```
-src/components/
-```
-
-Examples:
-
+- `AppShell.js`
+- `TopNav.js`
+- `DiscoverModePill.js`
 - `EventCard.js`
 - `EventPin.js`
-- `BottomNav.js`
-- `TopNav.js`
-- `CategoryFilter.js`
-- `FeedbackToast.js`
-- `ParticipantAvatarGroup.js`
+- `MorphingEventPreview.js`
+- `ExperiencePin.js`
+- `ProfileExperienceCard.js`
+- `ScreenStatusBar.js`
+- `PlaceholderScreen.js`
 
-Components should be reusable and should avoid directly fetching data from services.
+## Feature Details
 
----
+### Map
 
-### 4. Keep data access in `src/services`
+`MapScreen.js` uses `react-native-maps` with Google provider, the custom map style in `src/theme/mapStyle.js`, event markers, and a custom user-location marker.
 
-Screens should not directly manipulate mock data.
+Current marker behavior:
 
-Use service functions such as:
+- Event pins are custom React marker children rendered with `EventPin`.
+- Marker keys are stable by `event.id`.
+- The selected marker is hidden with native `Marker` opacity while the morphing preview is open.
+- `tracksViewChanges` is enabled during short refresh windows and while Discovery Mode is active.
+- Event thumbnail image load can request a marker view refresh.
+- The expanded preview is a React Native overlay rendered by `MorphingEventPreview`.
 
-```JavaScript
-getEvents()
-getEventById(id)
-getEventsByCategory(category)
-joinEvent(id)
-getDiscoverEvents()
-logInteraction(action, metadata)
-getInteractionLogs()
-clearInteractionLogs()
+The map requests foreground location through `locationService.js`, recenters when possible, and logs permission/location outcomes.
+
+### Morphing Preview
+
+`MorphingEventPreview.js` animates from the tapped pin geometry to an expanded card. It handles:
+
+- image-to-card morph animation;
+- card tail geometry;
+- save/bookmark toggle;
+- open-detail CTA;
+- close completion callback back to `MapScreen`.
+
+The preview receives its geometry from `MapScreen`, including dynamic card height for longer title/address content.
+
+### List
+
+`ListScreen.js` loads events through `eventService.js`, renders `EventCard`, supports bookmark updates, and respects Discovery Mode filtering.
+
+### Event Detail
+
+`EventDetailScreen.js` loads by `/event/[id]`, renders event media and social context, supports save/bookmark, lets the user mark participation, logs detail interactions, and triggers haptic feedback.
+
+### Profile
+
+`ProfileScreen.js` builds a cultural-passport view from `profileService.js`. It has:
+
+- profile header and stats;
+- list view with experience cards and photo refs;
+- map view with custom experience pins;
+- event detail navigation from both views.
+
+### Shake To Discover
+
+`ShakeDiscoverScreen.js` and `useShakeToDiscover.js` use the accelerometer to detect shaking, show animated particle feedback, trigger vibration/haptics, activate Discovery Mode, and redirect to `/map/list`.
+
+Discovery Mode stores a small ordered set of event IDs in `DiscoveryModeContext`, filters map/list data to that set, and can be dismissed from visible Discover Mode pills.
+
+### Placeholder Tabs
+
+Messages, Search, Community, and Notifications currently render `PlaceholderScreen` and log screen-open events.
+
+## Data Layer
+
+The prototype uses local mock data, not a backend.
+
+Main files:
+
+- `src/data/mockEvents.js`
+- `src/data/mockUsers.js`
+- `src/services/eventService.js`
+- `src/services/userService.js`
+- `src/services/profileService.js`
+
+`eventService.js` exposes:
+
+```js
+getEvents();
+getEventById(id);
+getEventsByCategory(category);
+joinEvent(id);
+toggleSavedEvent(id);
+getDiscoverEvents(options);
 ```
 
-This allows the mock backend to be replaced later by a real backend, probably Supabase, without rewriting the entire app.
+`userService.js` manages the current mock user in memory for save/join state. Interaction logs and logging context are stored in AsyncStorage.
 
----
+Current event shape:
 
-### 5. Use mock data for the academic prototype
-
-For now, data is stored locally in:
-
-```
-src/data/mockEvents.js
-src/data/mockUsers.js
-```
-
-The app should behave as if it had a backend, but the data can remain local for the academic prototype.
-
----
-
-## Current Data Layer
-
-The current mock backend lives in:
-
-```
-src/services/eventService.js
-```
-
-It currently supports:
-
-```JavaScript
-getEvents()
-getEventById(id)
-getEventsByCategory(category)
-joinEvent(id)
-getDiscoverEvents()
-```
-
-The service should be the only place that directly imports `mockEvents`.
-
-Avoid the inside screens:
-
-```JavaScript
-import { mockEvents } from ".../data/mockEvents";
-```
-
-Prefer this:
-
-```JavaScript
-import { getEvents } from "../services/eventService";
-```
-
----
-
-## Interaction Logs
-
-Interaction logs are required for usability testing.
-
-The logging service lives in:
-
-```
-src/services/interactionLogService.js
-```
-
-It currently supports:
-
-```JavaScript
-logInteraction(action, metadata)
-getInteractionLogs()
-clearInteractionLogs()
-```
-
-Logs are stored in AsyncStorage.
-
-Recommended logged actions:
-
-```
-app_opened
-map_view_opened
-list_view_opened
-profile_opened
-event_card_pressed
-event_pin_selected
-event_detail_opened
-participation_clicked
-participation_confirmed
-shake_detected
-discover_mode_activated
-filter_changed
-location_permission_requested
-location_permission_granted
-location_permission_denied
-task_started
-task_finished
-```
-
-Recommended metadata:
-
-```
-{
-  screen: "ListScreen",
-  eventId: "event-001",
-  participantId: "P1",
-  taskId: "find-and-join-event"
-}
-```
-
-A future debug/logs screen should allow:
-
-- viewing logs;
-- copying logs as JSON;
-- clearing logs between participants;
-- optionally showing simple stats.
-
-This is important because the academic report needs descriptive statistics based on quantitative interaction data.
-
----
-
-## Main User Flows
-
-### Flow 1 - List to Event Detail
-
-```
-Open app
-→ Open event list
-→ Select event
-→ View event details
-→ Tap Participate
-→ Receive haptic/visual feedback
-→ Event appears in profile
-→ Interaction is logged
-```
-
-### Flow 2 - Map to Event Detail
-
-```
-Open map
-→ View event pins
-→ Select pin
-→ See expanded event preview
-→ Open event detail
-→ Tap Participate
-→ Interaction is logged
-```
-
-### Flow 3 - Shake to Discover
-
-```
-Open map or discover mode
-→ Shake device
-→ Accelerometer detects shake
-→ App activates Discover Mode
-→ App suggests nearby/random events
-→ Haptic feedback is triggered
-→ Interaction is logged
-```
-
-### Flow 4 - Cultural Passport
-
-```
-Open profile
-→ See events marked as "going"
-→ See mock past experiences
-→ Optionally open event details again
-```
-
----
-
-## Implementation Priority
-
-Recommended implementation order:
-
-1. General layout
-2. Navigation integrated into UI components
-3. Event list screen
-4. Event detail screen
-5. Participate action + haptic feedback + logs
-6. Simple profile / cultural passport
-7. Event map screen
-8. Shake to Discover
-9. Real location
-10. Logs/debug/export screen
-11. Visual polish
-12. Usability testing
-
-The app should be demonstrable before map and sensors are fully implemented.
-
-Minimum safe demo:
-
-```
-List -> Event Detail -> Participate -> Feedback -> Log recorded -> Profile updated
-```
-
----
-
-## Design Requirements
-
-The app should follow the visual direction from the Figma high-fidelity prototype:
-
-- mobile-first;
-- bottom navigation;
-- top navigation/toggle for map/list/discover where appropriate;
-- event cards consistent with expanded event pins;
-- clear visual hierarchy;
-- large touch targets;
-- visual feedback for selected states;
-- subtle but clear Discover Mode state;
-- haptic feedback for important actions.
-
-Avoid over-polishing before functionality is complete.
-
-Functional first, visual polish second.
-
----
-
-## Feedback Requirements
-
-The final prototype should include at least two types of feedback.
-
-Planned feedback types:
-
-- Visual feedback
-- Text feedback
-- Haptic feedback
-- Optional audio feedback
-
-Required examples:
-
-- Button state changes after joining an event.
-- Haptic feedback after tapping Participate.
-- Haptic feedback after Shake to Discover.
-- Visual Discover Mode indicator after shake
-- Text confirmation after participation.
-
----
-
-## Input Requirements
-
-The final prototype should use touch input and at least two additional input/sensor mechanisms.
-
-Planned input types:
-
-- Touch input
-- Accelerometer input for Shake to Discover
-- Location input for nearby events/map centering
-
-Implementation priority:
-
-1. Touch
-2. Accelerometer
-3. Location
-
-Location can initially fallback to a default Lisbon coordinate if permissions are denied or unavailable.
-
----
-
-## Coding Guidelines for Codex
-
-When implementing changes, follow these rules:
-
-1. Use Expo Router, not React Navigation props.
-2. Do not use `navigation.navigate(...)` in screens.
-3. Use `useRouter()` from `expo-router` for navigation.
-4. Use `useLocalSearchParams()` for dynamic route params.
-5. Keep route files in `app/` thin.
-6. Keep screen implementations in `src/screens`.
-7. Keep reusable UI in `src/components`.
-8. Keep data fetching/manipulation in `src/services`.
-9. Do not import mock data directly into screens unless there is a strong reason.
-10. Log important user interactions through `interactionLogService`.
-11. Do not introduce backend yet
-12. Do not introduce authentication yet.
-13. Do not implement payments, ticketing, chat, or real event publishing in the academic prototype.
-14. Prefer simple, reliable implementation over complex architecture.
-15. Keep the app functional on Expo Go.
-16. Avoid adding dependencies unless necessary.
-17. If adding dependencies, explain why.
-18. Keep styles close to the existing theme files.
-19. Prefer small components with clear props.
-20. Do not break existing routes.
-
----
-
-## Expo Router Rules
-
-Use this pattern for navigation:
-
-```JavaScript
-import { useRouter } from "expo-router";
-
-const router = useRouter();
-
-router.push("/list");
-router.push("/map");
-router.push("/profile");
-```
-
-For dynamic event routes:
-
-```JavaScript
-import { useRouter } from "expo-router";
-
-const router = useRouter();
-
-router.push("/list");
-router.push("/map");
-router.push("/profile");
-```
-
-Use this pattern for reading dynamic route params:
-
-```JavaScript
-import { useLocalSearchParams } from "expo-router";
-
-const { id } = useLocalSearchParams();
-```
-
-Do not use:
-
-```JavaScript
-navigation.navigate("EventDetail", { eventId: id });
-```
-
----
-
-## Event Object Shape
-
-Events should generally follow this structure:
-
-```JavaScript
+```js
 {
   id: "event-001",
   title: "Art Gallery Inauguration",
   category: "Art",
-  description: "Inauguração de uma galeria independente em Lisboa.",
-  locationName: "R. Genérica, Lisboa",
+  description: "Inauguracao de uma galeria independente em Lisboa.",
+  locationName: "R. Generica, 5, 1234-123, Lisboa",
+  thumbnailKey: "art-gallery",
   latitude: 38.7223,
   longitude: -9.1393,
   date: "2026-06-03",
@@ -674,313 +293,149 @@ Events should generally follow this structure:
   price: "Free",
   popularity: 42,
   friendsGoing: ["Ana", "Miguel"],
-  friendsWentBefore: ["Rita", "João", "Clara"],
-  isJoined: false
+  friendsWentBefore: ["Rita", "Joao", "Clara"],
+  attendingFriends: [
+    { id: "ana", name: "Ana", avatarKey: "ana" }
+  ],
+  isJoined: false,
+  isSaved: false
 }
 ```
 
-Avoid changing this shape without updating:
+`isSaved` is added by `eventService.js` based on current user state.
 
-- eventService.js
-- EventCard.js
-- EventPin.js
-- ListScreen.js
-- MapScreen.js
-- EventDetailScreen.js
-- ProfileScreen.js
+## Interaction Logging
 
----
+Interaction logs live in `src/services/interactionLogService.js`.
 
-## Planned Screens
+The logger records:
 
-### Home / Index
+- session metadata;
+- route/screen/action;
+- event, task, participant, source, reason, and result metadata;
+- location metadata when available;
+- action categories;
+- elapsed time and sequence number.
 
-Purpose:
+Storage and export support:
 
-- Simple entry point.
-- Can link to Map and List.
+- logs stored in AsyncStorage;
+- interaction context stored in AsyncStorage;
+- JSON export;
+- CSV export;
+- bundled analytics export;
+- file writing through Expo FileSystem;
+- sharing through Expo Sharing.
 
-Route:
+Useful exported functions:
 
-```
-/
-```
-
-File:
-
-```
-app/index.tsx
-```
-
----
-
-## Map Screen
-
-Purpose:
-
-- Main exploration screen.
-- Shows event pins.
-- Allows event pin expansion.
-- Allows navigation to event detail.
-
-Route:
-
-```
-/map
+```js
+logInteraction(action, metadata);
+getInteractionLogs();
+clearInteractionLogs();
+setInteractionContext(context);
+startInteractionTask(taskId);
+finishInteractionTask(result);
+getInteractionSummary();
+getInteractionAnalytics();
+exportInteractionLogsAsJson();
+exportInteractionLogsAsCsv();
+exportInteractionLogsAsBundle();
+writeInteractionExportFile(format);
+shareInteractionExport(format);
 ```
 
-File:
+There is currently no dedicated logs/debug screen in the route tree.
 
-```
-app/map.tsx
-```
+## Design And UX
 
-Screen:
+The app uses a bright green primary color, magenta discovery accent, light surfaces, custom event imagery, avatar stacks, native tabs, and conditional Liquid Glass surfaces on supported iOS devices.
 
-```
-src/screens/MapScreen.js
-```
+Design intent:
 
----
+- map/list exploration first;
+- event-centered social proof;
+- compact mobile-first layouts;
+- large touch targets;
+- high-contrast active states;
+- haptics for meaningful actions;
+- Discover Mode as a visually distinct state.
 
-## List Screen
+## Development Guidelines
 
-Purpose:
+- Keep `app/` route files thin.
+- Put screen implementations in `src/screens`.
+- Put reusable UI in `src/components`.
+- Put mock data access and mutations in `src/services`.
+- Do not import `mockEvents` directly into screens.
+- Use Expo Router APIs such as `useRouter`, `router.push`, `router.replace`, and `useLocalSearchParams`.
+- Do not use React Navigation screen props in app screens.
+- Keep interaction logging wired through `interactionLogService`.
+- Keep the project Expo Go friendly where possible.
+- Avoid adding new dependencies unless they solve a concrete prototype need.
 
-- Shows events in list/card format.
-- Supports category filtering.
-- Allows navigation to event detail.
+## Validation
 
-Route:
+Run static/lint checks:
 
-```
-/list
-```
-
-File:
-
-```
-app/list.tsx
-```
-
-Screen:
-
-```
-src/screens/ListScreen.js
+```bash
+git diff --check
+npm run lint
 ```
 
----
+Manual smoke test:
 
-## Event Detail Screen
+1. Open `/map`.
+2. Allow or deny location and confirm the app still works.
+3. Tap an event pin and close the morphing preview.
+4. Open event details from the preview.
+5. Save/unsave an event.
+6. Mark participation in event details.
+7. Open `/map/list` and open an event card.
+8. Use `/map/shake-discover` and shake the device.
+9. Confirm Discover Mode filters the list/map and can be dismissed.
+10. Open Profile list and map views.
 
-Purpose:
+## Academic Delivery Notes
 
-- Shows full event information
-- Allows the user to mark participation.
-- Triggers haptic feedback
-- Logs detail opening and participation.
+The current implementation supports the prototype evidence needed for the course:
 
-Route:
+- functional app screens;
+- interaction logs for quantitative analysis;
+- location and accelerometer input;
+- haptic/visual feedback;
+- mock social event data;
+- profile/cultural-passport flow.
 
-```
-/event/[id]
-```
+Recommended usability tasks:
 
-File:
+1. Find an event on the map.
+2. Open an event preview.
+3. Navigate to event details.
+4. Save or unsave an event.
+5. Mark participation in an event.
+6. Find attended experiences in the profile.
+7. Use Shake to Discover.
 
-```
-app/event/[id].tsx
-```
+Useful metrics:
 
-Screen:
-
-```
-src/screens/EventDetailScreen.js
-```
-
----
-
-## Profile Screen
-
-Purpose:
-
-- Cultural passport.
-- Shows joined/planned events
-- Shows mock past events.
-- May include hidden debug access to logs.
-
-Route:
-
-```
-/profile
-```
-
-File:
-
-```
-app/profile.tsx
-```
-
-Screen:
-
-```
-src/screens/ProfileScreen.js
-```
-
----
-
-## Planned Components
-
-### EventCard
-
-Used in:
-
-- List screen
-- Discover Suggestions
-- Profile joined events
-
-Responsibilities:
-
-- Display event title, category, location, date/time, price, popularity.
-- Trigger `onPress`.
-- Avoid fetching data internally.
-
----
-
-### EventPin
-
-Used in:
-
-- Map screen
-
-Responsibilities:
-
-- Display location marker.
-- Show popularity visually
-- Support selected/expanded state.
-- Trigger `onPress`.
-
----
-
-### BottomNav
-
-Used in:
-
-- Main screens
-
-Responsibilities:
-
-- Navigate between map, list, profile.
-- Indicate active route.
-- Use Expo Router Navigation
-
----
-
-### CategoryFilter
-
-Used in:
-
-- List screen
-- Map screen
-
-Responsibilities:
-
-- Show available categories.
-- Trigger selected category changes
-- Log `filter_changed`.
-
----
-
-## What not to implement yet
-
-Do not implement these for the academic prototype unless all core flows are already finished:
-
-- Real authentication.
-- Real backend
-- Real event publishing
-- Payments
-- Ticket purchasing.
-- Chat/messaging
-- Push notifications
-- Complex social feed
-- Real image uploads
-- Advanced recommendation algorithm
-
-These can be listed as future work in the report.
-
----
+- task completion rate;
+- time to find an event;
+- number of event previews opened;
+- number of event detail pages opened;
+- number of save/join actions;
+- number of shakes detected;
+- number of location permission outcomes;
+- number of navigation actions;
+- error count observed during testing.
 
 ## Future Work
 
-Possible post-delivery improvements:
-
-- Supabase backend
-- User authentication
-- Organizer accounts
-- Real event creation
-- Event image uploads
-- Friend system
-- Cultural passport with real attendance history
-- Photo posting tied to event location
-- Event recommendations based on user behaviour.
-- Real-time event popularity
-- Push notifications
-- Web admin dashboard for organizers
-
----
-
-## Academic Report Notes
-
-The implementation should support collecting evidence for the final report:
-
-- Screenshots of each screen
-- Description of changes from previous prototypes.
-- Explanation of simplified features
-- Usability testing task list
-- Interaction logs
-- Descriptive statistics
-- Photos of tests with permission
-- Link to GitHub repository
-
-Recommended usability test tasks:
-
-1. Find an event through the list
-2. Open an event detail page
-3. Mark participation in an event
-4. Find the event in the profile
-5. Explore events through the map
-6. Use Shake to Discover
-
-Recommended quantitative metrics:
-
-- Time to find an event
-- Time to open event details
-- Time to mark participants
-- Number of events opened
-- Number of shakes performed
-- Number of filters used
-- Number of navigation actions
-- Task completion rate
-- Error count.
-
----
-
-## Development Philosophy
-
-This is a one-week academic functional prototype with future real-world potential.
-
-Therefore:
-
-Build the core experience first.
-Keep the architecture clean enough to grow.
-Avoid premature backend complexity.
-Prioritize working mobile interactions.
-Log usability data from the beginning.
-
-Minimum successful prototype:
-
-List -> Detail -> Participate -> Haptic Feedback -> Log -> Profile
-
-Map -> Pin -> Detail
-
-Shake -> Discover Mode -> Suggested events -> Log
+- Replace local mock data with a real backend.
+- Add authentication and persistent user profiles.
+- Add organizer accounts and event publishing.
+- Add real messaging and notifications.
+- Add real media uploads.
+- Add a logs/debug export screen.
+- Polish map marker stability and preview animation.
+- Add stronger recommendation logic for Discover Mode.

@@ -26,24 +26,29 @@ import { toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 import { getAvatarImage, getEventImage } from "../utils/imageAssets";
-import { EVENT_PIN_METRICS, EventPinParticles, getEventPinLayout } from "./EventPin";
+import { getSessionEventPinLayout } from "./EventPin";
 
-const CARD_HEIGHT = 216;
+const DEFAULT_CARD_HEIGHT = 300;
 const CARD_RADIUS = 14;
-const CARD_PADDING = 10;
-const THUMBNAIL_WIDTH = 119;
-const THUMBNAIL_HEIGHT = 196;
-const THUMBNAIL_RADIUS = 8;
-const INFO_GAP = 12;
-const DETAILS_BUTTON_WIDTH = 62;
-const DETAILS_BUTTON_HEIGHT = 32;
-const CARD_CONTENT_LEFT = CARD_PADDING + THUMBNAIL_WIDTH + INFO_GAP;
-const PIN_SURFACE_COLOR = colors.primary;
-const CARD_SURFACE_COLOR = colors.surface;
-const CARD_BORDER_COLOR = colors.border;
-const CARD_AVATAR_SIZE = 24;
+const CARD_PADDING = 12;
+
+const IMAGE_HEIGHT = 150;
+
+const PRICE_BADGE_HEIGHT = 28;
+const CTA_HEIGHT = 38;
+const SIDE_COLUMN_WIDTH = 94;
+const SIDE_COLUMN_RIGHT_INSET = 14;
+
+const CARD_AVATAR_SIZE = 26;
 const CARD_AVATAR_BORDER_WIDTH = 1.5;
 const CARD_AVATAR_OVERLAP = 10;
+
+const PIN_SURFACE_COLOR = colors.primary;
+const CARD_SURFACE_COLOR = colors.primary;
+const CARD_BORDER_COLOR = colors.primary;
+
+const ACTION_BACKGROUND_COLOR = colors.text;
+const ACTION_TEXT_COLOR = colors.surface;
 
 function PreviewAttendeeStack({ attendees }) {
   const safeAttendees = Array.isArray(attendees) ? attendees : [];
@@ -95,8 +100,9 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
   const isClosingRef = useRef(false);
   const [isSaved, setIsSaved] = useState(Boolean(event.isSaved));
 
-  const layout = getEventPinLayout(event);
+  const layout = getSessionEventPinLayout(event);
   const attendees = Array.isArray(event.attendingFriends) ? event.attendingFriends : [];
+  const finalCardHeight = geometry.cardHeight ?? DEFAULT_CARD_HEIGHT;
   const price = event.price?.toUpperCase?.() ?? "";
 
   useEffect(() => {
@@ -173,37 +179,37 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         [0, 1],
         [PIN_SURFACE_COLOR, CARD_BORDER_COLOR]
       ),
-      borderRadius: interpolate(
-        value,
-        [0, 1],
-        [EVENT_PIN_METRICS.circleSize / 2, CARD_RADIUS]
-      ),
-      height: interpolate(value, [0, 1], [EVENT_PIN_METRICS.circleSize, CARD_HEIGHT]),
-      left: interpolate(value, [0, 1], [layout.circleOffset, 0]),
-      top: interpolate(value, [0, 1], [layout.circleOffset, 0]),
-      width: interpolate(value, [0, 1], [EVENT_PIN_METRICS.circleSize, geometry.width]),
+      borderRadius: interpolate(value, [0, 1], [layout.outerSize / 2, CARD_RADIUS]),
+      height: interpolate(value, [0, 1], [layout.outerSize, finalCardHeight]),
+      left: interpolate(value, [0, 1], [0, 0]),
+      top: interpolate(value, [0, 1], [0, 0]),
+      width: interpolate(value, [0, 1], [layout.outerSize, geometry.width]),
     };
-  }, [geometry.width, layout.circleOffset]);
+  }, [finalCardHeight, geometry.width, layout.outerSize]);
 
-  const particleStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.3], [1, 0], Extrapolation.CLAMP),
-  }));
-
-  const thumbnailStyle = useAnimatedStyle(() => {
+  const thumbnailClipStyle = useAnimatedStyle(() => {
     const value = progress.value;
 
     return {
-      borderRadius: interpolate(
+      borderBottomLeftRadius: interpolate(value, [0, 1], [layout.circleSize / 2, 0]),
+      borderBottomRightRadius: interpolate(value, [0, 1], [layout.circleSize / 2, 0]),
+      borderTopLeftRadius: interpolate(
         value,
         [0, 1],
-        [EVENT_PIN_METRICS.imageSize / 2, THUMBNAIL_RADIUS]
+        [layout.circleSize / 2, CARD_RADIUS]
       ),
-      height: interpolate(value, [0, 1], [EVENT_PIN_METRICS.imageSize, THUMBNAIL_HEIGHT]),
-      left: interpolate(value, [0, 1], [layout.circleOffset + 2, CARD_PADDING]),
-      top: interpolate(value, [0, 1], [layout.circleOffset + 2, CARD_PADDING]),
-      width: interpolate(value, [0, 1], [EVENT_PIN_METRICS.imageSize, THUMBNAIL_WIDTH]),
+      borderTopRightRadius: interpolate(
+        value,
+        [0, 1],
+        [layout.circleSize / 2, CARD_RADIUS]
+      ),
+      height: interpolate(value, [0, 1], [layout.circleSize, IMAGE_HEIGHT]),
+      left: interpolate(value, [0, 1], [layout.circleOffset, 0]),
+      overflow: "hidden",
+      top: interpolate(value, [0, 1], [layout.circleOffset, 0]),
+      width: interpolate(value, [0, 1], [layout.circleSize, geometry.width]),
     };
-  }, [layout.circleOffset]);
+  }, [geometry.width, layout.circleOffset, layout.circleSize]);
 
   const cardContentStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
@@ -223,22 +229,37 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     const value = progress.value;
 
     return {
-      borderTopColor: interpolateColor(
+      borderLeftWidth: geometry.tailWidth / 2,
+      borderRightWidth: geometry.tailWidth / 2,
+      borderTopColor: CARD_SURFACE_COLOR,
+      borderTopWidth: interpolate(
         value,
-        [0, 1],
-        [PIN_SURFACE_COLOR, CARD_SURFACE_COLOR]
+        [0, 0.7, 1],
+        [0, 0, geometry.tailHeight],
+        Extrapolation.CLAMP
       ),
-      left: interpolate(
-        value,
-        [0, 1],
-        [layout.contentRadius - EVENT_PIN_METRICS.tailWidth / 2, geometry.tailLeft]
-      ),
-      top: interpolate(value, [0, 1], [layout.tailTop, geometry.tailTop]),
+      left: geometry.tailLeft,
+      opacity: interpolate(value, [0.65, 1], [0, 1], Extrapolation.CLAMP),
+      top: geometry.tailTop,
     };
-  }, [geometry.tailLeft, geometry.tailTop, layout.contentRadius, layout.tailTop]);
+  }, [geometry.tailHeight, geometry.tailLeft, geometry.tailTop, geometry.tailWidth]);
 
   const saveIconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: saveScale.value }],
+  }));
+
+  const saveButtonStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      progress.value,
+      [0.45, 0.75, 1],
+      [0, 0.6, 1],
+      Extrapolation.CLAMP
+    ),
+    transform: [
+      {
+        scale: interpolate(progress.value, [0.45, 1], [0.92, 1], Extrapolation.CLAMP),
+      },
+    ],
   }));
 
   function animateSavePulse() {
@@ -290,63 +311,76 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         style={[styles.surface, surfaceStyle]}
       />
 
-      <Animated.View pointerEvents="none" style={[styles.particleLayer, particleStyle]}>
-        <EventPinParticles event={event} layout={layout} />
+      <Animated.View style={[styles.thumbnailClip, thumbnailClipStyle]}>
+        <Animated.Image
+          accessibilityLabel={`${event.title} thumbnail`}
+          resizeMode="cover"
+          source={getEventImage(event.thumbnailKey)}
+          style={styles.thumbnail}
+        />
       </Animated.View>
 
-      <Animated.Image
-        accessibilityLabel={`${event.title} thumbnail`}
-        resizeMode="cover"
-        source={getEventImage(event.thumbnailKey)}
-        style={[styles.thumbnail, thumbnailStyle]}
-      />
+      <Animated.View style={[styles.saveButtonOverlay, saveButtonStyle]}>
+        <Pressable
+          accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isSaved }}
+          hitSlop={10}
+          onPress={handleSavePress}
+          style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
+        >
+          <Animated.View style={saveIconStyle}>
+            <Ionicons
+              name={isSaved ? "bookmark" : "bookmark-outline"}
+              size={30}
+              color={colors.surface}
+            />
+          </Animated.View>
+        </Pressable>
+      </Animated.View>
 
       <Animated.View
         pointerEvents="box-none"
         style={[styles.cardContent, cardContentStyle]}
       >
-        <View style={styles.headerRow}>
-          <Text numberOfLines={2} style={styles.title}>
-            {event.title}
-          </Text>
+        <View>
+          <View style={styles.titleRow}>
+            <Text numberOfLines={2} style={styles.title}>
+              {event.title}
+            </Text>
 
+            <View style={styles.sideColumn}>
+              <View style={styles.priceBadge}>
+                <Text style={styles.priceBadgeText}>{price}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.infoRow}>
+            <View style={styles.metaColumn}>
+              <Text numberOfLines={2} style={styles.address}>
+                {event.locationName}
+              </Text>
+
+              <Text style={styles.dateText}>{event.dateLabel ?? "APR 24, 2026"}</Text>
+            </View>
+
+            <View style={styles.sideColumn}>
+              <PreviewAttendeeStack attendees={attendees} />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.ctaRow}>
           <Pressable
-            accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
+            accessibilityLabel={`Open details for ${event.title}`}
             accessibilityRole="button"
-            accessibilityState={{ selected: isSaved }}
-            hitSlop={8}
-            onPress={handleSavePress}
-            style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
+            onPress={handleOpenPress}
+            style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}
           >
-            <Animated.View style={saveIconStyle}>
-              <Ionicons
-                name="bookmark"
-                size={20}
-                color={isSaved ? colors.primary : colors.iconMuted}
-              />
-            </Animated.View>
+            <Text style={styles.detailsButtonText}>CHECK US OUT</Text>
           </Pressable>
         </View>
-
-        <Text numberOfLines={2} style={styles.address}>
-          {event.locationName}
-        </Text>
-
-        <Text style={styles.price}>{price}</Text>
-
-        <View style={styles.footerRow}>
-          <PreviewAttendeeStack attendees={attendees} />
-        </View>
-
-        <Pressable
-          accessibilityLabel={`Open details for ${event.title}`}
-          accessibilityRole="button"
-          onPress={handleOpenPress}
-          style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.detailsButtonText}>CHECK US</Text>
-          <Text style={styles.detailsButtonText}>OUT</Text>
-        </Pressable>
       </Animated.View>
 
       <Animated.View pointerEvents="none" style={[styles.tail, tailStyle]} />
@@ -375,33 +409,141 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     zIndex: 1,
   },
-  particleLayer: {
-    left: 0,
-    position: "absolute",
-    top: 0,
-    zIndex: 0,
-  },
-  thumbnail: {
+  thumbnailClip: {
     position: "absolute",
     zIndex: 3,
   },
-  footerRow: {
-    alignItems: "flex-end",
-    bottom: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    left: 0,
-    position: "absolute",
-    right: DETAILS_BUTTON_WIDTH + 10,
+  thumbnail: {
+    height: "100%",
+    width: "100%",
   },
+  saveButtonOverlay: {
+    position: "absolute",
+    right: CARD_PADDING + 10,
+    top: CARD_PADDING + 10,
+    zIndex: 7,
+  },
+  saveButton: {
+    alignItems: "center",
+    backgroundColor: "transparent",
+    height: 34,
+    justifyContent: "center",
+    padding: 0,
+    width: 34,
+  },
+  tail: {
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    height: 0,
+    position: "absolute",
+    width: 0,
+    zIndex: 2,
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+
+  cardContent: {
+    bottom: CARD_PADDING + 10,
+    justifyContent: "space-between",
+    left: CARD_PADDING,
+    position: "absolute",
+    right: CARD_PADDING,
+    top: IMAGE_HEIGHT + 18,
+    zIndex: 5,
+  },
+
+  titleRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  title: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 21,
+    fontWeight: "900",
+    lineHeight: 24,
+    minWidth: 0,
+  },
+
+  priceBadge: {
+    alignItems: "center",
+    alignSelf: "flex-end",
+    backgroundColor: ACTION_BACKGROUND_COLOR,
+    borderRadius: 7,
+    height: PRICE_BADGE_HEIGHT,
+    justifyContent: "center",
+    minWidth: 58,
+    paddingHorizontal: 10,
+  },
+
+  priceBadgeText: {
+    color: ACTION_TEXT_COLOR,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  address: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+
+  dateText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+    marginTop: 8,
+  },
+
+  infoRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+  },
+
+  metaColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  sideColumn: {
+    alignItems: "flex-end",
+    marginRight: SIDE_COLUMN_RIGHT_INSET,
+    width: SIDE_COLUMN_WIDTH,
+  },
+
+  ctaRow: {
+    paddingTop: 14,
+  },
+
+  detailsButton: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    backgroundColor: ACTION_BACKGROUND_COLOR,
+    borderRadius: 10,
+    height: CTA_HEIGHT,
+    justifyContent: "center",
+  },
+
+  detailsButtonText: {
+    color: ACTION_TEXT_COLOR,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
   avatarStack: {
     alignItems: "center",
     flexDirection: "row",
-    minHeight: 26,
+    justifyContent: "flex-end",
+    minHeight: CARD_AVATAR_SIZE,
   },
   emptyStack: {
-    minHeight: 26,
-    width: 24,
+    minHeight: CARD_AVATAR_SIZE,
+    width: CARD_AVATAR_SIZE,
   },
   avatar: {
     borderColor: colors.surface,
@@ -415,87 +557,13 @@ const styles = StyleSheet.create({
   },
   moreAvatar: {
     alignItems: "center",
-    backgroundColor: colors.iconMuted,
+    backgroundColor: ACTION_BACKGROUND_COLOR,
     justifyContent: "center",
   },
   moreAvatarText: {
-    color: colors.surface,
+    color: ACTION_TEXT_COLOR,
     fontSize: 19,
     fontWeight: "800",
     lineHeight: 20,
-  },
-  cardContent: {
-    bottom: CARD_PADDING,
-    left: CARD_CONTENT_LEFT,
-    position: "absolute",
-    right: CARD_PADDING,
-    top: CARD_PADDING + 6,
-    zIndex: 5,
-  },
-  headerRow: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    gap: 6,
-  },
-  title: {
-    color: colors.text,
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "800",
-    lineHeight: 17,
-  },
-  saveButton: {
-    alignItems: "center",
-    borderRadius: 10,
-    height: 28,
-    justifyContent: "center",
-    marginTop: -2,
-    width: 24,
-  },
-  address: {
-    color: colors.secondaryText,
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 12,
-  },
-  price: {
-    color: colors.primary,
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0,
-    marginTop: 6,
-  },
-  detailsButton: {
-    alignItems: "flex-start",
-    backgroundColor: colors.primary,
-    borderRadius: 5,
-    bottom: 0,
-    height: DETAILS_BUTTON_HEIGHT,
-    justifyContent: "center",
-    minWidth: DETAILS_BUTTON_WIDTH,
-    paddingHorizontal: 6,
-    position: "absolute",
-    right: 0,
-  },
-  detailsButtonText: {
-    color: colors.iconActive,
-    fontSize: 8,
-    fontWeight: "900",
-    letterSpacing: 0,
-    lineHeight: 10,
-  },
-  tail: {
-    borderLeftColor: "transparent",
-    borderLeftWidth: EVENT_PIN_METRICS.tailWidth / 2,
-    borderRightColor: "transparent",
-    borderRightWidth: EVENT_PIN_METRICS.tailWidth / 2,
-    borderTopWidth: EVENT_PIN_METRICS.tailHeight,
-    height: 0,
-    position: "absolute",
-    width: 0,
-    zIndex: 2,
-  },
-  pressed: {
-    opacity: 0.72,
   },
 });
