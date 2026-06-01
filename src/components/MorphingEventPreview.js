@@ -32,7 +32,8 @@ const DEFAULT_CARD_HEIGHT = 300;
 const CARD_RADIUS = 0;
 const CARD_PADDING = 12;
 
-const IMAGE_HEIGHT = 150;
+const DEFAULT_IMAGE_HEIGHT = 400;
+const CONTENT_TOP_GAP = 18;
 
 const PRICE_BADGE_HEIGHT = 28;
 const CTA_HEIGHT = 38;
@@ -46,6 +47,8 @@ const CARD_AVATAR_OVERLAP = 10;
 const PIN_SURFACE_COLOR = colors.primary;
 const CARD_SURFACE_COLOR = colors.primary;
 const CARD_BORDER_COLOR = colors.primary;
+const IMAGE_BORDER_WIDTH = 3;
+const IMAGE_BORDER_COLOR = colors.primary;
 
 const ACTION_BACKGROUND_COLOR = colors.text;
 const ACTION_TEXT_COLOR = colors.surface;
@@ -103,6 +106,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
   const layout = getSessionEventPinLayout(event);
   const attendees = Array.isArray(event.attendingFriends) ? event.attendingFriends : [];
   const finalCardHeight = geometry.cardHeight ?? DEFAULT_CARD_HEIGHT;
+  const finalImageHeight = geometry.imageHeight ?? DEFAULT_IMAGE_HEIGHT;
   const price = event.price?.toUpperCase?.() ?? "";
 
   useEffect(() => {
@@ -203,13 +207,29 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         [0, 1],
         [layout.circleSize / 2, CARD_RADIUS]
       ),
-      height: interpolate(value, [0, 1], [layout.circleSize, IMAGE_HEIGHT]),
+      height: interpolate(value, [0, 1], [layout.circleSize, finalImageHeight]),
       left: interpolate(value, [0, 1], [layout.circleOffset, 0]),
       overflow: "hidden",
       top: interpolate(value, [0, 1], [layout.circleOffset, 0]),
       width: interpolate(value, [0, 1], [layout.circleSize, geometry.width]),
     };
-  }, [geometry.width, layout.circleOffset, layout.circleSize]);
+  }, [finalImageHeight, geometry.width, layout.circleOffset, layout.circleSize]);
+
+  const imageBorderStyle = useAnimatedStyle(() => {
+    const value = progress.value;
+
+    return {
+      borderBottomWidth: 0,
+      borderColor: IMAGE_BORDER_COLOR,
+      borderLeftWidth: interpolate(value, [0, 1], [0, IMAGE_BORDER_WIDTH]),
+      borderRightWidth: interpolate(value, [0, 1], [0, IMAGE_BORDER_WIDTH]),
+      borderTopWidth: interpolate(value, [0, 1], [0, IMAGE_BORDER_WIDTH]),
+      height: interpolate(value, [0, 1], [layout.circleSize, finalImageHeight]),
+      left: interpolate(value, [0, 1], [layout.circleOffset, 0]),
+      top: interpolate(value, [0, 1], [layout.circleOffset, 0]),
+      width: interpolate(value, [0, 1], [layout.circleSize, geometry.width]),
+    };
+  }, [finalImageHeight, geometry.width, layout.circleOffset, layout.circleSize]);
 
   const cardContentStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
@@ -223,6 +243,15 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         translateY: interpolate(progress.value, [0.42, 1], [8, 0], Extrapolation.CLAMP),
       },
     ],
+  }));
+
+  const cardContentPositionStyle = useAnimatedStyle(() => ({
+    top: interpolate(
+      progress.value,
+      [0, 1],
+      [layout.circleOffset + layout.circleSize, finalImageHeight + CONTENT_TOP_GAP],
+      Extrapolation.CLAMP
+    ),
   }));
 
   const saveIconStyle = useAnimatedStyle(() => ({
@@ -292,6 +321,11 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         style={[styles.surface, surfaceStyle]}
       />
 
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.imageBorder, imageBorderStyle]}
+      />
+
       <Animated.View style={[styles.thumbnailClip, thumbnailClipStyle]}>
         <Animated.Image
           accessibilityLabel={`${event.title} thumbnail`}
@@ -322,12 +356,12 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
       <Animated.View
         pointerEvents="box-none"
-        style={[styles.cardContent, cardContentStyle]}
+        style={[styles.cardContent, cardContentPositionStyle, cardContentStyle]}
       >
         <View style={styles.contentInfo}>
           <View style={styles.titleRow}>
             <Text numberOfLines={2} style={styles.title}>
-              {event.title}
+              {String(event.title ?? "").toUpperCase()}
             </Text>
 
             <View style={styles.sideColumn}>
@@ -392,6 +426,10 @@ const styles = StyleSheet.create({
     position: "absolute",
     zIndex: 3,
   },
+  imageBorder: {
+    position: "absolute",
+    zIndex: 4,
+  },
   thumbnail: {
     height: "100%",
     width: "100%",
@@ -419,7 +457,6 @@ const styles = StyleSheet.create({
     left: CARD_PADDING,
     position: "absolute",
     right: CARD_PADDING,
-    top: IMAGE_HEIGHT + 18,
     zIndex: 5,
   },
   contentInfo: {
@@ -522,7 +559,7 @@ const styles = StyleSheet.create({
     width: CARD_AVATAR_SIZE,
   },
   avatar: {
-    borderColor: colors.surface,
+    borderColor: colors.secondary,
     borderRadius: CARD_AVATAR_SIZE / 2,
     borderWidth: CARD_AVATAR_BORDER_WIDTH,
     height: CARD_AVATAR_SIZE,

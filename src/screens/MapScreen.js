@@ -41,9 +41,9 @@ const LISBON_REGION = {
 };
 
 const PREVIEW_HORIZONTAL_PADDING = 20;
-const PREVIEW_MAX_WIDTH = 380;
-const PREVIEW_BASE_CARD_HEIGHT = 360;
-const PREVIEW_IMAGE_HEIGHT = 150;
+const PREVIEW_MAX_WIDTH = 292;
+const PREVIEW_BASE_CARD_HEIGHT = 470;
+const PREVIEW_IMAGE_ASPECT_RATIO = 4 / 5;
 const PREVIEW_CONTENT_TOP_GAP = 18;
 const PREVIEW_TITLE_LINE_HEIGHT = 24;
 const PREVIEW_ADDRESS_LINE_HEIGHT = 20;
@@ -52,7 +52,7 @@ const PREVIEW_INFO_GAP = 8;
 const PREVIEW_CTA_TOP_GAP = 18;
 const PREVIEW_CTA_HEIGHT = 38;
 const PREVIEW_BOTTOM_PADDING = 28;
-const PREVIEW_MAX_CARD_HEIGHT = 440;
+const PREVIEW_MAX_CARD_HEIGHT = 680;
 
 const LOCATION_CENTER_ANIMATION_MS = 700;
 const EVENT_CENTER_ANIMATION_MS = 100;
@@ -131,12 +131,12 @@ function getEstimatedLineCount(text, charsPerLine, maxLines) {
   return clamp(Math.ceil(length / charsPerLine), 1, maxLines);
 }
 
-function getPreviewCardHeight(event) {
+function getPreviewCardHeight(event, imageHeight) {
   const titleLines = getEstimatedLineCount(event?.title, 18, 2);
   const addressLines = getEstimatedLineCount(event?.locationName, 34, 2);
 
   const estimatedHeight =
-    PREVIEW_IMAGE_HEIGHT +
+    imageHeight +
     PREVIEW_CONTENT_TOP_GAP +
     titleLines * PREVIEW_TITLE_LINE_HEIGHT +
     PREVIEW_INFO_GAP +
@@ -154,11 +154,13 @@ function getPreviewCardHeight(event) {
 }
 
 function getPreviewGeometry({ event, pinLayout, screenHeight, screenWidth, startPoint }) {
-  const cardHeight = getPreviewCardHeight(event);
   const previewWidth = Math.min(
     PREVIEW_MAX_WIDTH,
     screenWidth - PREVIEW_HORIZONTAL_PADDING * 2
   );
+
+  const imageHeight = previewWidth / PREVIEW_IMAGE_ASPECT_RATIO;
+  const cardHeight = getPreviewCardHeight(event, imageHeight);
 
   const left = (screenWidth - previewWidth) / 2;
   const top = Math.max(
@@ -168,6 +170,7 @@ function getPreviewGeometry({ event, pinLayout, screenHeight, screenWidth, start
 
   return {
     cardHeight,
+    imageHeight,
     cloneHeight: pinLayout.outerSize,
     cloneLeft: startPoint.x - pinLayout.outerSize / 2,
     cloneTop: startPoint.y - pinLayout.outerSize / 2,
