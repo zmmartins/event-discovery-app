@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -257,6 +258,7 @@ export default function MapScreen() {
   const pendingPreviewEventRef = useRef(null);
   const eventCenterTimeoutRef = useRef(null);
   const isRecenteringOnEventRef = useRef(false);
+  const hasDismissedPreviewByGestureRef = useRef(false);
 
   const [events, setEvents] = useState([]);
   const [locationStatus, setLocationStatus] = useState(
@@ -457,6 +459,16 @@ export default function MapScreen() {
     [handlePreviewCloseComplete, pathname, selectedEvent]
   );
 
+  const dismissPreviewFromOverlayGesture = useCallback(
+    (reason) => {
+      if (!selectedEvent || hasDismissedPreviewByGestureRef.current) return;
+
+      hasDismissedPreviewByGestureRef.current = true;
+      closePreview(reason);
+    },
+    [closePreview, selectedEvent]
+  );
+
   const handleRegionChange = useCallback((region) => {
     currentRegionRef.current = region;
   }, []);
@@ -494,6 +506,7 @@ export default function MapScreen() {
         startPoint,
       });
 
+      hasDismissedPreviewByGestureRef.current = false;
       setPreviewGeometry(nextPreviewGeometry);
       setSelectedEvent(event);
       setIsMapCenteredOnUser(
@@ -782,6 +795,19 @@ export default function MapScreen() {
         )}
       </MapView>
 
+      {selectedEvent && previewGeometry && (
+        <Pressable
+          accessibilityLabel="Close event preview"
+          accessibilityRole="button"
+          onPress={() => dismissPreviewFromOverlayGesture("map_press")}
+          onTouchMove={() => dismissPreviewFromOverlayGesture("map_pan")}
+          style={styles.previewDismissOverlay}
+        >
+          <BlurView intensity={10} tint="light" style={StyleSheet.absoluteFill} />
+          <View pointerEvents="none" style={styles.previewDimOverlay} />
+        </Pressable>
+      )}
+
       <LocationStatusIndicator
         isCenteredOnUser={isMapCenteredOnUser}
         onPress={handleLocationStatusPress}
@@ -833,6 +859,14 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  previewDismissOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  previewDimOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
   },
   locationStatus: {
     position: "absolute",
