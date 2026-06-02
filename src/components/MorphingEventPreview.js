@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { usePathname } from "expo-router";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
   Extrapolation,
@@ -34,6 +34,11 @@ const POSTER_BOTTOM_PADDING = 16;
 
 const POSTER_TITLE_FONT_SIZE = 31;
 const POSTER_TITLE_LINE_HEIGHT = 31;
+const POSTER_TITLE_ROW_HEIGHT = 104;
+const POSTER_TITLE_MAX_LINES = 3;
+const POSTER_DATE_SLOT_WIDTH = 58;
+const POSTER_TITLE_RIGHT_PADDING = 8;
+const POSTER_TITLE_MIN_WORD_CHARS = 3;
 
 const ACTION_BUTTON_SIZE = 48;
 const ACTION_ICON_SIZE = 34;
@@ -105,6 +110,205 @@ function getPosterDateParts(event) {
   };
 }
 
+function getUppercaseCharacterWidthRatio(character) {
+  if (character === " ") return 0.34;
+  if (character === "-") return 0.38;
+  if ("IL1".includes(character)) return 0.34;
+  if ("MW".includes(character)) return 0.94;
+  if ("ABCDEFGHKNOPQRSTUVXYZ".includes(character)) return 0.74;
+
+  return 0.68;
+}
+
+function estimatePosterTextWidth(value, fontSize) {
+  return String(value ?? "")
+    .split("")
+    .reduce(
+      (width, character) => width + getUppercaseCharacterWidthRatio(character) * fontSize,
+      0
+    );
+}
+
+function doesPosterTextFit(value, maxWidth, fontSize) {
+  return estimatePosterTextWidth(value, fontSize) <= maxWidth;
+}
+
+function splitLongPosterWordByWidth(word, maxWidth, fontSize) {
+  const safeWord = String(word ?? "").toUpperCase();
+
+  if (doesPosterTextFit(safeWord, maxWidth, fontSize)) {
+    return [safeWord];
+  }
+
+  const parts = [];
+  let remaining = safeWord;
+
+  while (remaining.length > 0) {
+    if (doesPosterTextFit(remaining, maxWidth, fontSize)) {
+      parts.push(remaining);
+      break;
+    }
+
+    let bestCut = 0;
+
+    for (let cut = POSTER_TITLE_MIN_WORD_CHARS; cut < remaining.length; cut += 1) {
+      const candidate = `${remaining.slice(0, cut)}-`;
+
+      if (doesPosterTextFit(candidate, maxWidth, fontSize)) {
+        bestCut = cut;
+      } else {
+        break;
+      }
+    }
+
+    if (bestCut <= 0) {
+      bestCut = Math.max(POSTER_TITLE_MIN_WORD_CHARS, Math.floor(remaining.length / 2));
+    }
+
+    const remainderLength = remaining.length - bestCut;
+
+    if (
+      remainderLength > 0 &&
+      remainderLength < POSTER_TITLE_MIN_WORD_CHARS &&
+      bestCut > POSTER_TITLE_MIN_WORD_CHARS + remainderLength
+    ) {
+      bestCut -= POSTER_TITLE_MIN_WORD_CHARS - remainderLength;
+    }
+
+    parts.push(`${remaining.slice(0, bestCut)}-`);
+    remaining = remaining.slice(bestCut);
+  }
+
+  return parts;
+}
+
+function buildPosterTitleLines(words, maxLines, maxWidth, fontSize) {
+  const lines = [];
+  let hasOverflow = false;
+
+  function pushLine(line) {
+    if (!line) return true;
+
+    if (lines.length < maxLines) {
+      lines.push(line);
+      return true;
+    }
+
+    const lastIndex = maxLines - 1;
+    const candidateLine = `${lines[lastIndex]} ${line}`.trim();
+    lines[lastIndex] = candidateLine;
+    hasOverflow = true;
+
+    return doesPosterTextFit(candidateLine, maxWidth, fontSize);
+  }
+
+  words.forEach((word) => {
+    const wordParts = splitLongPosterWordByWidth(word, maxWidth, fontSize);
+
+    wordParts.forEach((part) => {
+      const currentLine = lines[lines.length - 1];
+
+      if (!currentLine) {
+        pushLine(part);
+        return;
+      }
+
+      const candidateLine = `${currentLine} ${part}`;
+
+      if (doesPosterTextFit(candidateLine, maxWidth, fontSize)) {
+        lines[lines.length - 1] = candidateLine;
+        return;
+      }
+
+      pushLine(part);
+    });
+  });
+
+  return {
+    hasOverflow,
+    lines: lines.slice(0, maxLines),
+  };
+}
+
+function formatPosterTitleLines({
+  value,
+  maxLines = POSTER_TITLE_MAX_LINES,
+  maxWidth,
+  preferredFontSize = POSTER_TITLE_FONT_SIZE,
+}) {
+  const words = String(value ?? "")
+    .toUpperCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) return [];
+
+  const safeMaxWidth = Math.max(maxWidth || 0, preferredFontSize * 4);
+  const fontSizeCandidates = [preferredFontSize, 30, 27, 24].filter(
+    (fontSize, index, fontSizes) => fontSizes.indexOf(fontSize) === index
+  );
+  let bestValidTitleLines = null;
+  let fallbackTitleLines = [];
+
+  for (const fontSize of fontSizeCandidates) {
+    const result = buildPosterTitleLines(words, maxLines, safeMaxWidth, fontSize);
+    fallbackTitleLines = result.lines;
+
+    const allLinesFit = result.lines.every((line) =>
+      doesPosterTextFit(line, safeMaxWidth, fontSize)
+    );
+
+    if (!result.hasOverflow && allLinesFit) {
+      const hasHyphenatedLine = result.lines.some((line) => line.endsWith("-"));
+
+      if (!hasHyphenatedLine) {
+        return result.lines;
+      }
+
+      bestValidTitleLines = bestValidTitleLines ?? result.lines;
+    }
+  }
+
+  return bestValidTitleLines ?? fallbackTitleLines;
+}
+
+function getPosterTitleTypography(titleLines, maxWidth) {
+  const lines = Array.isArray(titleLines) ? titleLines : [];
+  const safeMaxWidth = Math.max(maxWidth || 0, POSTER_TITLE_FONT_SIZE * 4);
+  const hasHyphenatedLine = lines.some((line) => line.endsWith("-"));
+
+  if (hasHyphenatedLine || lines.length >= 3) {
+    return {
+      fontSize: 24,
+      lineHeight: 24,
+    };
+  }
+
+  for (const fontSize of [POSTER_TITLE_FONT_SIZE, 30, 27, 24]) {
+    if (lines.every((line) => doesPosterTextFit(line, safeMaxWidth, fontSize))) {
+      return {
+        fontSize,
+        lineHeight:
+          fontSize === POSTER_TITLE_FONT_SIZE ? POSTER_TITLE_LINE_HEIGHT : fontSize,
+      };
+    }
+  }
+
+  return {
+    fontSize: 24,
+    lineHeight: 24,
+  };
+}
+
+function formatPosterAddress(value) {
+  return String(value ?? "")
+    .replace(/\b\d{4}-\d{3},?\s*/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+,/g, ",")
+    .trim();
+}
+
 function PreviewAttendeeStack({ attendees }) {
   const safeAttendees = Array.isArray(attendees) ? attendees : [];
   const hasOverflow = safeAttendees.length > 4;
@@ -171,10 +375,21 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     finalCardHeight - posterBottomPadding - posterMetaHeight
   );
 
-  const title = String(event.title ?? "").toUpperCase();
+  const rawTitle = String(event.title ?? "");
+  const title = rawTitle.toUpperCase();
+  const posterTitleMaxWidth =
+    geometry.width -
+    posterPadding * 2 -
+    POSTER_DATE_SLOT_WIDTH -
+    POSTER_TITLE_RIGHT_PADDING;
+  const posterTitleLines = formatPosterTitleLines({
+    maxWidth: posterTitleMaxWidth,
+    value: rawTitle,
+  });
+  const titleTypography = getPosterTitleTypography(posterTitleLines, posterTitleMaxWidth);
   const priceLabel = event.price?.toUpperCase?.() ?? "";
   const entranceLabel = [priceLabel, "ENTRADA"].filter(Boolean).join(" | ");
-  const addressLabel = event.locationName ?? "";
+  const addressLabel = formatPosterAddress(event.locationName);
   const organizerName =
     event.organizerName ?? event.establishmentName ?? event.hostName ?? "LisTunes";
   const posterDate = getPosterDateParts(event);
@@ -346,25 +561,38 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
             },
           ]}
         >
-          <View style={styles.posterTitleColumn}>
-            <Text numberOfLines={3} style={styles.posterTitle}>
-              {title}
-            </Text>
-
-            <View style={styles.posterAvatarRow}>
-              <PreviewAttendeeStack attendees={attendees} />
+          <View style={styles.posterTitleDateRow}>
+            <View style={styles.posterTitleBlock}>
+              {posterTitleLines.map((line, index) => (
+                <Text
+                  adjustsFontSizeToFit
+                  key={`${line}-${index}`}
+                  minimumFontScale={0.78}
+                  numberOfLines={1}
+                  style={[styles.posterTitleLine, titleTypography]}
+                >
+                  {line}
+                </Text>
+              ))}
             </View>
-          </View>
 
-          <View style={styles.posterRightColumn}>
-            <View style={styles.posterDateBlock}>
+            <View style={styles.posterDateSlot}>
               <View style={styles.posterDateTextGroup}>
                 <Text style={styles.posterDateMain}>{posterDate.main}</Text>
                 <Text style={styles.posterDateSub}>{posterDate.sub}</Text>
               </View>
             </View>
+          </View>
 
-            <Text numberOfLines={1} style={styles.organizerName}>
+          <View style={styles.posterHeaderMetaRow}>
+            <PreviewAttendeeStack attendees={attendees} />
+
+            <Text
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+              numberOfLines={1}
+              style={styles.organizerName}
+            >
               {organizerName}
             </Text>
           </View>
@@ -382,8 +610,13 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
           ]}
         >
           <View style={styles.posterMeta}>
-            <Text style={styles.posterMetaText}>{entranceLabel}</Text>
-            <Text numberOfLines={1} style={styles.posterMetaText}>
+            <Text style={styles.posterMetaPrice}>{entranceLabel}</Text>
+            <Text
+              adjustsFontSizeToFit
+              minimumFontScale={0.78}
+              numberOfLines={2}
+              style={styles.posterMetaAddress}
+            >
               {addressLabel}
             </Text>
           </View>
@@ -447,64 +680,70 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   posterHeader: {
-    flexDirection: "row",
     position: "absolute",
   },
-  posterTitleColumn: {
-    flex: 1,
-    minWidth: 0,
-    paddingRight: 8,
+  posterTitleDateRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    height: POSTER_TITLE_ROW_HEIGHT,
   },
-  posterTitle: {
+  posterTitleBlock: {
+    flex: 1,
+    justifyContent: "center",
+    minWidth: 0,
+    paddingRight: POSTER_TITLE_RIGHT_PADDING,
+  },
+  posterTitleLine: {
     color: colors.text,
-    fontSize: POSTER_TITLE_FONT_SIZE,
     fontWeight: "900",
     letterSpacing: 0,
-    lineHeight: POSTER_TITLE_LINE_HEIGHT,
+    minWidth: 0,
   },
-  posterAvatarRow: {
-    marginTop: 12,
-  },
-  posterRightColumn: {
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    width: 86,
-  },
-  posterDateBlock: {
-    height: 112,
+  posterDateSlot: {
+    alignItems: "center",
+    height: POSTER_TITLE_ROW_HEIGHT,
+    justifyContent: "center",
     overflow: "visible",
-    position: "relative",
-    width: 86,
+    width: POSTER_DATE_SLOT_WIDTH,
   },
   posterDateTextGroup: {
-    alignItems: "flex-end",
-    position: "absolute",
-    right: -36,
-    top: 36,
-    transform: [{ rotate: "90deg" }],
-    width: 112,
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ rotate: "-90deg" }],
+    width: POSTER_TITLE_ROW_HEIGHT,
+    height: POSTER_DATE_SLOT_WIDTH,
   },
   posterDateMain: {
     color: colors.text,
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "900",
     letterSpacing: 0,
     lineHeight: 25,
   },
   posterDateSub: {
     color: colors.text,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "900",
     letterSpacing: 0,
-    lineHeight: 15,
-    marginTop: 2,
+    lineHeight: 14,
+    marginTop: 0,
+    marginBottom: -17,
+  },
+  posterHeaderMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 5,
   },
   organizerName: {
     color: colors.text,
+    flex: 1,
     fontSize: 20,
     fontWeight: "900",
-    letterSpacing: 0,
+    letterSpacing: -0.5,
     lineHeight: 23,
+    marginLeft: 12,
+    minWidth: 0,
     textAlign: "right",
   },
   posterFooter: {
@@ -518,12 +757,31 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingRight: 12,
   },
-  posterMetaText: {
+  posterMetaPrice: {
     color: colors.text,
-    fontSize: 13,
+    fontFamily: Platform.select({
+      android: "monospace",
+      default: "monospace",
+      ios: "Menlo",
+    }),
+    fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0,
-    lineHeight: 18,
+    lineHeight: 16,
+    marginBottom: 2,
+  },
+  posterMetaAddress: {
+    color: colors.text,
+    flexShrink: 1,
+    fontFamily: Platform.select({
+      android: "monospace",
+      default: "monospace",
+      ios: "Menlo",
+    }),
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0,
+    lineHeight: 16,
   },
   arrowButton: {
     alignItems: "center",

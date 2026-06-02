@@ -2,7 +2,7 @@
 
 Functional mobile prototype for the course **Interactive Multimedia Applications 2025/2026**.
 
-The app is a social local event discovery prototype for exploring nearby cultural experiences in Lisbon. It focuses on map/list discovery, social attendance context, a cultural-passport style profile, shake-to-discover interaction, location awareness, haptic/visual feedback, and interaction logging for usability testing.
+The app is a social local event discovery prototype for exploring nearby cultural experiences in Lisbon. It focuses on map/list discovery, stable custom map pins, editorial event previews, social attendance context, a cultural-passport style profile, shake-to-discover interaction, location awareness, haptic/visual feedback, and interaction logging for usability testing.
 
 ## Current State
 
@@ -12,7 +12,7 @@ Implemented core areas:
 
 - Native tab shell with Explore, Messages, Search, Community, and Profile tabs.
 - Nested Explore stack with map, list, shake-discover, and notifications routes.
-- Map exploration with event pins, user-location recentering, morphing event preview cards, save/bookmark support, and event-detail navigation.
+- Map exploration with static event pins, user-location recentering, centered editorial poster previews, and event-detail navigation.
 - List exploration with event cards, save/bookmark support, and Discover Mode filtering.
 - Event detail screen with a draggable sheet, event media, social context, save/bookmark, participate action, and haptic feedback.
 - Profile screen with list and map views for attended mock experiences.
@@ -20,7 +20,7 @@ Implemented core areas:
 - Interaction logging with AsyncStorage persistence and JSON/CSV/bundle export helpers.
 - Placeholder tabs for Messages, Search, Community, and Notifications.
 
-Not implemented as real product features:
+Out of scope for the current academic prototype:
 
 - Authentication.
 - Real backend.
@@ -40,6 +40,8 @@ Not implemented as real product features:
 - Expo Location
 - Expo Sensors
 - Expo Haptics
+- Expo Blur
+- React Native Reanimated
 - Expo FileSystem and Sharing
 - Expo Glass Effect and native tabs
 - AsyncStorage
@@ -204,25 +206,41 @@ Core components:
 Current marker behavior:
 
 - Event pins are custom React marker children rendered with `EventPin`.
-- Marker keys are stable by `event.id`.
-- The selected marker is hidden with native `Marker` opacity while the morphing preview is open.
-- `tracksViewChanges` is enabled during short refresh windows and while Discovery Mode is active.
-- Event thumbnail image load can request a marker view refresh.
-- The expanded preview is a React Native overlay rendered by `MorphingEventPreview`.
+- Event marker keys remain stable by `event.id`.
+- Event markers use `tracksViewChanges={false}` during normal operation.
+- The marker layer is intentionally static and independent from preview state.
+- Opening or closing a preview must not hide, unmount, rekey, remount, refresh, or opacity-toggle event markers.
+- The selected marker remains mounted and visible underneath the overlay.
+- Event pin layout/size is derived from event data but frozen per JS session through the session layout helper in `EventPin.js`.
+- The expanded preview is a React Native overlay rendered by `MorphingEventPreview`, not a map marker.
+- The map recenters on the selected event before the preview opens.
+- A blur/dismiss overlay appears behind the expanded preview and blocks map interaction while the preview is open.
+
+Important marker stability rule:
+
+Do not make preview state mutate the marker layer. Preview interactions must not change marker visibility, keys, mount state, `tracksViewChanges`, or marker image-load refresh behavior. This rule exists because custom React children inside `react-native-maps` markers can become unstable if repeatedly refreshed or remounted.
 
 The map requests foreground location through `locationService.js`, recenters when possible, and logs permission/location outcomes.
 
 ### Morphing Preview
 
-`MorphingEventPreview.js` animates from the tapped pin geometry to an expanded card. It handles:
+`MorphingEventPreview.js` animates from the tapped pin geometry into a centered editorial poster-style overlay.
 
-- image-to-card morph animation;
-- card tail geometry;
-- save/bookmark toggle;
-- open-detail CTA;
-- close completion callback back to `MapScreen`.
+Current behavior:
 
-The preview receives its geometry from `MapScreen`, including dynamic card height for longer title/address content.
+- The map centers on the selected event before the preview opens.
+- The preview morph starts from the tapped pin's screen geometry.
+- The expanded preview is centered on the screen and no longer uses a tail.
+- A blur/dismiss overlay is rendered behind the preview.
+- Tapping outside the preview or dragging on the overlay dismisses the preview.
+- The poster layout presents the event title, date/time, social attendance context, organizer/venue label, square event artwork, and price/address metadata.
+- Poster titles are preformatted before rendering: they prefer word-boundary line breaks, manually hyphenate long words, and use font scaling only as a fallback.
+- The date/time stack is rotated and aligned with the title row.
+- The footer uses compact editorial/monospace support text, removes postal-code-like address fragments, and allows the address to wrap to two lines.
+- The circular arrow action button opens `/event/[id]`.
+- Close completion is reported back to `MapScreen` so preview state can be cleared after the morph-out animation.
+
+The preview receives its poster geometry from `MapScreen`, including centered card dimensions, header/footer section heights, square artwork size, and the tapped pin's morph start geometry.
 
 ### List
 
@@ -245,7 +263,7 @@ The preview receives its geometry from `MapScreen`, including dynamic card heigh
 
 `ShakeDiscoverScreen.js` and `useShakeToDiscover.js` use the accelerometer to detect shaking, show animated particle feedback, trigger vibration/haptics, activate Discovery Mode, and redirect to `/map/list`.
 
-Discovery Mode stores a small ordered set of event IDs in `DiscoveryModeContext`, filters map/list data to that set, and can be dismissed from visible Discover Mode pills.
+Discovery Mode stores a small ordered set of event IDs in `DiscoveryModeContext`, filters map/list data to that set, and can be dismissed from visible Discover Mode pills. Discovery Mode must not change marker mount behavior; it only changes which events are provided to the map/list screens.
 
 ### Placeholder Tabs
 
@@ -274,7 +292,7 @@ toggleSavedEvent(id);
 getDiscoverEvents(options);
 ```
 
-`userService.js` manages the current mock user in memory for save/join state. Interaction logs and logging context are stored in AsyncStorage.
+`userService.js` manages the current mock user in memory for save/join state. `eventService.js` returns event objects enriched with user-specific state such as `isSaved` and `isJoined`. Interaction logs and logging context are stored in AsyncStorage.
 
 Current event shape:
 
@@ -354,6 +372,7 @@ The app uses a bright green primary color, magenta discovery accent, light surfa
 Design intent:
 
 - map/list exploration first;
+- editorial poster previews for event discovery from the map;
 - event-centered social proof;
 - compact mobile-first layouts;
 - large touch targets;
@@ -371,8 +390,9 @@ Design intent:
 - Use Expo Router APIs such as `useRouter`, `router.push`, `router.replace`, and `useLocalSearchParams`.
 - Do not use React Navigation screen props in app screens.
 - Keep interaction logging wired through `interactionLogService`.
-- Keep the project Expo Go friendly where possible.
-- Avoid adding new dependencies unless they solve a concrete prototype need.
+- Keep the map marker layer static. Do not connect marker rendering to preview open/close state.
+- Keep the project Expo Go friendly where possible, but do not let that block concrete prototype requirements when an Expo-compatible module or dev build would be justified.
+- Prefer Expo-compatible dependencies. Add new dependencies only when they solve a concrete UX, testing, or implementation need, and document why they were added.
 
 ## Validation
 
@@ -387,14 +407,23 @@ Manual smoke test:
 
 1. Open `/map`.
 2. Allow or deny location and confirm the app still works.
-3. Tap an event pin and close the morphing preview.
-4. Open event details from the preview.
-5. Save/unsave an event.
-6. Mark participation in event details.
-7. Open `/map/list` and open an event card.
-8. Use `/map/shake-discover` and shake the device.
-9. Confirm Discover Mode filters the list/map and can be dismissed.
-10. Open Profile list and map views.
+3. Tap multiple event pins repeatedly.
+4. Confirm the map centers on the tapped event before the preview opens.
+5. Confirm the editorial poster preview opens centered on screen.
+6. Confirm event pins do not disappear after opening/closing previews.
+7. Confirm the user-location marker does not disappear after opening/closing previews.
+8. Confirm tapping outside the poster dismisses the preview and removes the blur.
+9. Confirm dragging on the blur/dismiss overlay dismisses the preview.
+10. Confirm the circular poster action button opens event details.
+11. Confirm long poster titles wrap cleanly at word boundaries or manual hyphen breaks, without native-looking one-letter splits.
+12. Confirm long poster addresses can wrap in the footer and do not show postal-code-like fragments.
+13. Save/unsave from an event card and from event details.
+14. Mark participation in event details.
+15. Open `/map/list` and open an event card.
+16. Use `/map/shake-discover` and shake the device.
+17. Confirm Discover Mode filters the list/map and can be dismissed.
+18. Confirm Discover Mode does not destabilize map markers.
+19. Open Profile list and map views.
 
 ## Academic Delivery Notes
 
@@ -437,5 +466,7 @@ Useful metrics:
 - Add real messaging and notifications.
 - Add real media uploads.
 - Add a logs/debug export screen.
-- Polish map marker stability and preview animation.
+- Continue refining the editorial map preview poster motion and layout.
+- Add robust regression testing/checklists around custom map markers and preview interactions.
+- Consider a dev-build/native-marker strategy only if Expo Go limitations become blocking.
 - Add stronger recommendation logic for Discover Mode.
