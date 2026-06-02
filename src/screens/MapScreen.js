@@ -192,6 +192,8 @@ function LocationStatusIndicator({ isCenteredOnUser, onPress, status, top }) {
   const isAvailable = status === "available";
   const isLocating = status === "locating";
   const isActive = isAvailable && isCenteredOnUser;
+  const shouldUseLiquidGlass =
+    Platform.OS === "ios" && liquidGlassAvailable && !isActive;
 
   const surfaceStyle = [
     styles.locationStatusSurface,
@@ -205,7 +207,7 @@ function LocationStatusIndicator({ isCenteredOnUser, onPress, status, top }) {
       <Ionicons
         name={isLocating ? "radio-outline" : "location"}
         size={14}
-        color={isActive ? colors.iconActive : colors.iconMuted}
+        color={isActive ? colors.text : colors.iconMuted}
       />
       <Text
         style={[styles.locationStatusText, isActive && styles.locationStatusTextActive]}
@@ -229,7 +231,7 @@ function LocationStatusIndicator({ isCenteredOnUser, onPress, status, top }) {
         { top },
       ]}
     >
-      {Platform.OS === "ios" && liquidGlassAvailable ? (
+      {shouldUseLiquidGlass ? (
         <GlassView
           colorScheme={LIQUID_GLASS_COLOR_SCHEME}
           glassEffectStyle={LIQUID_GLASS_EFFECT_STYLE}
@@ -737,6 +739,8 @@ export default function MapScreen() {
     userLocation,
   ]);
 
+  const shouldShowLocationStatus = !(selectedEvent && previewGeometry);
+
   return (
     <View style={styles.container}>
       <MapView
@@ -812,12 +816,14 @@ export default function MapScreen() {
         </Pressable>
       )}
 
-      <LocationStatusIndicator
-        isCenteredOnUser={isMapCenteredOnUser}
-        onPress={handleLocationStatusPress}
-        status={locationStatus}
-        top={insets.top + 64}
-      />
+      {shouldShowLocationStatus && (
+        <LocationStatusIndicator
+          isCenteredOnUser={isMapCenteredOnUser}
+          onPress={handleLocationStatusPress}
+          status={locationStatus}
+          top={insets.top + 64}
+        />
+      )}
 
       {isDiscoveryActive && (
         <>
@@ -898,7 +904,9 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
   },
   locationStatusActive: {
+    backgroundColor: colors.primary,
     borderColor: colors.primary,
+    opacity: 1,
   },
   locationStatusInactive: {
     opacity: 0.78,

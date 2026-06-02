@@ -36,6 +36,7 @@ const POSTER_TITLE_FONT_SIZE = 31;
 const POSTER_TITLE_LINE_HEIGHT = 31;
 const POSTER_TITLE_ROW_HEIGHT = 104;
 const POSTER_TITLE_MAX_LINES = 3;
+const POSTER_TITLE_WIDTH_SAFETY_FACTOR = 0.96;
 const POSTER_TITLE_MAX_FONT_SIZE = 42;
 const POSTER_TITLE_MIN_FONT_SIZE = 20;
 const POSTER_TITLE_LINE_HEIGHT_RATIO = 0.96;
@@ -529,10 +530,11 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
   const rawTitle = String(event.title ?? "");
   const title = rawTitle.toUpperCase();
   const posterTitleMaxWidth =
-    geometry.width -
-    posterPadding * 2 -
-    POSTER_DATE_SLOT_WIDTH -
-    POSTER_TITLE_RIGHT_PADDING;
+    (geometry.width -
+      posterPadding * 2 -
+      POSTER_DATE_SLOT_WIDTH -
+      POSTER_TITLE_RIGHT_PADDING) *
+    POSTER_TITLE_WIDTH_SAFETY_FACTOR;
   const posterTitleMaxHeight = POSTER_TITLE_ROW_HEIGHT;
   const posterTitleLayout = getBestPosterTitleLayout({
     maxHeight: posterTitleMaxHeight,
@@ -722,9 +724,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
             <View style={styles.posterTitleBlock}>
               {posterTitleLines.map((line, index) => (
                 <Text
-                  adjustsFontSizeToFit
                   key={`${line}-${index}`}
-                  minimumFontScale={0.78}
                   numberOfLines={1}
                   style={[styles.posterTitleLine, titleTypography]}
                 >
@@ -854,6 +854,7 @@ const styles = StyleSheet.create({
   posterTitleLine: {
     color: colors.text,
     fontWeight: "900",
+    includeFontPadding: false,
     letterSpacing: 0,
     minWidth: 0,
   },
