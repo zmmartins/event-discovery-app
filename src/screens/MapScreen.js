@@ -192,8 +192,7 @@ function LocationStatusIndicator({ isCenteredOnUser, onPress, status, top }) {
   const isAvailable = status === "available";
   const isLocating = status === "locating";
   const isActive = isAvailable && isCenteredOnUser;
-  const shouldUseLiquidGlass =
-    Platform.OS === "ios" && liquidGlassAvailable && !isActive;
+  const shouldUseLiquidGlass = Platform.OS === "ios" && liquidGlassAvailable && !isActive;
 
   const surfaceStyle = [
     styles.locationStatusSurface,

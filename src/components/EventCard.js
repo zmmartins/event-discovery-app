@@ -2,20 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Animated, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { toggleSavedEvent } from "../services/eventService";
-import {
-  LOG_ACTIONS,
-  logInteraction,
-} from "../services/interactionLogService";
+import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 
 const thumbnailImages = {
@@ -23,6 +13,21 @@ const thumbnailImages = {
   "film-night": require("../assets/events/film-night.png"),
   "rooftop-jazz": require("../assets/events/rooftop-jazz.png"),
 };
+
+const monthLabels = [
+  "JAN",
+  "FEB",
+  "MAR",
+  "APR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AUG",
+  "SEP",
+  "OCT",
+  "NOV",
+  "DEC",
+];
 
 const avatarImages = {
   ana: require("../assets/avatars/ana.png"),
@@ -33,12 +38,38 @@ const avatarImages = {
   rita: require("../assets/avatars/rita.png"),
 };
 
-function AttendeeStack({ attendees }) {
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatEventDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) return "DATE TBA -";
+
+  return `${monthLabels[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()} -`;
+}
+
+function getThumbnailHeight(source, columnWidth) {
+  const asset = Image.resolveAssetSource(source);
+  const aspectRatio =
+    Number.isFinite(asset?.width) &&
+    Number.isFinite(asset?.height) &&
+    asset.width > 0 &&
+    asset.height > 0
+      ? asset.width / asset.height
+      : 1;
+  const rawHeight = columnWidth / aspectRatio;
+
+  return clamp(rawHeight, columnWidth * 0.62, columnWidth * 1.45);
+}
+
+function VerticalAttendeeStack({ attendees }) {
   const safeAttendees = Array.isArray(attendees) ? attendees : [];
-  const hasOverflow = safeAttendees.length > 4;
+  const hasOverflow = safeAttendees.length > 2;
   const visibleAttendees = hasOverflow
-    ? safeAttendees.slice(0, 3)
-    : safeAttendees.slice(0, 4);
+    ? safeAttendees.slice(0, 2)
+    : safeAttendees.slice(0, 3);
 
   if (safeAttendees.length === 0) {
     return <View style={styles.emptyStack} />;
@@ -65,6 +96,7 @@ function AttendeeStack({ attendees }) {
 }
 
 export default function EventCard({
+  columnWidth,
   event,
   onOpen,
   onSavedChange,
@@ -74,7 +106,16 @@ export default function EventCard({
   const pathname = usePathname();
   const saveScale = useRef(new Animated.Value(1)).current;
   const [isSaved, setIsSaved] = useState(Boolean(event.isSaved));
-  const price = event.price?.toUpperCase?.() ?? "";
+  const resolvedColumnWidth = Number(columnWidth);
+  const safeColumnWidth =
+    Number.isFinite(resolvedColumnWidth) && resolvedColumnWidth > 0
+      ? resolvedColumnWidth
+      : 120;
+  const thumbnailSource =
+    thumbnailImages[event.thumbnailKey] ?? thumbnailImages["art-gallery"];
+  const thumbnailHeight = getThumbnailHeight(thumbnailSource, safeColumnWidth);
+  const formattedDate = formatEventDate(event.date);
+  const title = String(event.title ?? "").toUpperCase();
 
   useEffect(() => {
     setIsSaved(Boolean(event.isSaved));
@@ -125,151 +166,131 @@ export default function EventCard({
   }
 
   return (
-    <View style={styles.card}>
-      <Image
-        accessibilityLabel={`${event.title} thumbnail`}
-        source={thumbnailImages[event.thumbnailKey] ?? thumbnailImages["art-gallery"]}
-        style={styles.thumbnail}
-      />
+    <View style={[styles.card, { width: safeColumnWidth }]}>
+      <View style={[styles.imageWrap, { height: thumbnailHeight }]}>
+        <Pressable
+          accessibilityLabel={`Open details for ${event.title}`}
+          accessibilityRole="button"
+          onPress={handleOpenPress}
+          style={StyleSheet.absoluteFill}
+        >
+          <Image
+            accessibilityLabel={`${event.title} thumbnail`}
+            resizeMode="cover"
+            source={thumbnailSource}
+            style={styles.thumbnail}
+          />
+        </Pressable>
 
-      <View style={styles.info}>
-        <View style={styles.headerRow}>
-          <Text numberOfLines={2} style={styles.title}>
-            {event.title}
-          </Text>
-
-          <Pressable
-            accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
-            accessibilityRole="button"
-            accessibilityState={{ selected: isSaved }}
-            hitSlop={8}
-            onPress={handleSavePress}
-            style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
-          >
-            <Animated.View style={{ transform: [{ scale: saveScale }] }}>
-              <Ionicons
-                name="bookmark"
-                size={20}
-                color={isSaved ? colors.primary : colors.iconMuted}
-              />
-            </Animated.View>
-          </Pressable>
-        </View>
-
-        <Text numberOfLines={2} style={styles.address}>
-          {event.locationName}
-        </Text>
-        <Text style={styles.price}>{price}</Text>
-
-        <View style={styles.footerRow}>
-          <AttendeeStack attendees={event.attendingFriends} />
-
-          <Pressable
-            accessibilityLabel={`Open details for ${event.title}`}
-            accessibilityRole="button"
-            onPress={handleOpenPress}
-            style={({ pressed }) => [
-              styles.detailsButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.detailsButtonText}>CHECK US</Text>
-            <Text style={styles.detailsButtonText}>OUT</Text>
-          </Pressable>
-        </View>
+        <Pressable
+          accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isSaved }}
+          hitSlop={8}
+          onPress={handleSavePress}
+          style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
+        >
+          <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+            <Ionicons
+              name="bookmark"
+              size={28}
+              color={isSaved ? colors.primary : "rgba(255, 255, 255, 0.7)"}
+            />
+          </Animated.View>
+        </Pressable>
       </View>
+
+      <Pressable
+        accessibilityLabel={`Open details for ${event.title}`}
+        accessibilityRole="button"
+        onPress={handleOpenPress}
+        style={({ pressed }) => [styles.metaPressable, pressed && styles.pressed]}
+      >
+        <View style={styles.metaText}>
+          <Text numberOfLines={1} style={styles.date}>
+            {formattedDate}
+          </Text>
+          <Text numberOfLines={3} style={styles.title}>
+            {title}
+          </Text>
+        </View>
+
+        <VerticalAttendeeStack attendees={event.attendingFriends} />
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-    elevation: 3,
-    flexDirection: "row",
-    height: 216,
-    minHeight: 216,
-    padding: 10,
-    shadowColor: colors.effects.shadow,
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-  },
-  thumbnail: {
-    borderRadius: 8,
-    height: 196,
-    width: 119,
-  },
-  info: {
-    flex: 1,
-    justifyContent: "space-between",
-    marginLeft: 12,
-    minWidth: 0,
-    paddingVertical: 6,
-  },
-  headerRow: {
-    alignItems: "flex-start",
-    flexDirection: "row",
     gap: 6,
   },
-  title: {
-    color: colors.text,
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "800",
-    lineHeight: 17,
+  imageWrap: {
+    backgroundColor: colors.softSurface,
+    borderCurve: "continuous",
+    borderRadius: 14,
+    overflow: "hidden",
+    position: "relative",
+    width: "100%",
+  },
+  thumbnail: {
+    height: "100%",
+    width: "100%",
   },
   saveButton: {
     alignItems: "center",
-    borderRadius: 10,
-    height: 28,
+    backgroundColor: "transparent",
+    height: 34,
     justifyContent: "center",
-    marginTop: -2,
-    width: 24,
+    position: "absolute",
+    right: 8,
+    top: 8,
+    width: 34,
+    zIndex: 2,
   },
-  address: {
-    color: colors.secondaryText,
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 2,
-  },
-  price: {
-    color: colors.primary,
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0,
-    marginTop: 2,
-  },
-  footerRow: {
-    alignItems: "flex-end",
+  metaPressable: {
+    alignItems: "flex-start",
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
+    gap: 6,
+    minHeight: 48,
+  },
+  metaText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  date: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "500",
+    letterSpacing: 0,
+    lineHeight: 14,
+  },
+  title: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0,
+    lineHeight: 16,
+    marginTop: 1,
   },
   avatarStack: {
     alignItems: "center",
-    flexDirection: "row",
-    minHeight: 26,
+    minHeight: 20,
+    paddingTop: 1,
   },
   emptyStack: {
-    minHeight: 26,
-    width: 24,
+    minHeight: 20,
+    width: 20,
   },
   avatar: {
     borderColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    height: 24,
-    width: 24,
+    borderRadius: 10,
+    borderWidth: 1.2,
+    height: 20,
+    width: 20,
   },
   avatarOverlap: {
-    marginLeft: -10,
+    marginTop: -6,
   },
   moreAvatar: {
     alignItems: "center",
@@ -278,25 +299,9 @@ const styles = StyleSheet.create({
   },
   moreAvatarText: {
     color: colors.surface,
-    fontSize: 19,
+    fontSize: 16,
     fontWeight: "800",
-    lineHeight: 20,
-  },
-  detailsButton: {
-    alignItems: "flex-start",
-    backgroundColor: colors.primary,
-    borderRadius: 5,
-    justifyContent: "center",
-    minHeight: 32,
-    minWidth: 62,
-    paddingHorizontal: 6,
-  },
-  detailsButtonText: {
-    color: colors.iconActive,
-    fontSize: 8,
-    fontWeight: "900",
-    letterSpacing: 0,
-    lineHeight: 10,
+    lineHeight: 17,
   },
   pressed: {
     opacity: 0.72,

@@ -12,8 +12,8 @@ Implemented core areas:
 
 - Native tab shell with Explore, Messages, Search, Community, and Profile tabs.
 - Nested Explore stack with map, list, shake-discover, and notifications routes.
-- Map exploration with static event pins, user-location recentering, centered editorial poster previews, and event-detail navigation.
-- List exploration with event cards, save/bookmark support, and Discover Mode filtering.
+- Map exploration with static event pins, user-location recentering, a transient location-status control, centered editorial poster previews, and event-detail navigation.
+- List exploration with a two-column masonry-style event feed, image-led cards, save/bookmark support, and Discover Mode filtering.
 - Event detail screen with a draggable sheet, event media, social context, save/bookmark, participate action, and haptic feedback.
 - Profile screen with list and map views for attended mock experiences.
 - Shake to Discover using the accelerometer, vibration/haptics, animated feedback, and Discover Mode activation.
@@ -215,6 +215,8 @@ Current marker behavior:
 - The expanded preview is a React Native overlay rendered by `MorphingEventPreview`, not a map marker.
 - The map recenters on the selected event before the preview opens.
 - A blur/dismiss overlay appears behind the expanded preview and blocks map interaction while the preview is open.
+- The location-status/recenter control disappears while an event preview is open and returns after the poster collapses back to the map.
+- The location-status control is translucent when inactive and becomes a solid primary-green control with dark text/icon when the map is centered on the user.
 
 Important marker stability rule:
 
@@ -234,7 +236,9 @@ Current behavior:
 - A blur/dismiss overlay is rendered behind the preview.
 - Tapping outside the preview or dragging on the overlay dismisses the preview.
 - The poster layout presents the event title, date/time, social attendance context, organizer/venue label, square event artwork, and price/address metadata.
-- Poster titles are preformatted before rendering: they prefer word-boundary line breaks, manually hyphenate long words, and use font scaling only as a fallback.
+- Poster titles are sized by a custom layout solver that chooses word-boundary line breaks, font size, and line height together.
+- Title hyphenation is used only as a fallback for titles that cannot fit at normal word boundaries.
+- Poster title lines render as one native `Text` element per solved line and do not use native auto-shrinking, which keeps 3-line titles stable during the morph animation.
 - The date/time stack is rotated and aligned with the title row.
 - The footer uses compact editorial/monospace support text, removes postal-code-like address fragments, and allows the address to wrap to two lines.
 - The circular arrow action button opens `/event/[id]`.
@@ -244,7 +248,23 @@ The preview receives its poster geometry from `MapScreen`, including centered ca
 
 ### List
 
-`ListScreen.js` loads events through `eventService.js`, renders `EventCard`, supports bookmark updates, and respects Discovery Mode filtering.
+`ListScreen.js` loads events through `eventService.js`, supports bookmark updates, and respects Discovery Mode filtering.
+
+Current list behavior:
+
+- The list uses a `ScrollView` with exactly two independently rendered columns.
+- Events are split between columns by alternating index.
+- Each `EventCard` receives the calculated column width, so all thumbnails share the same column width.
+- `EventCard` is a vertical masonry tile: image first, then an uppercase date/title block with a compact vertical attendee stack.
+- Thumbnail height is calculated from the local image aspect ratio with a min/max clamp.
+- Tapping the image opens event details.
+- Tapping the date/title area opens event details.
+- Tapping the bookmark only toggles saved state and keeps the existing haptic/logging behavior.
+- The bookmark has no circular background; inactive state is a translucent outline over the image and active state is a primary-green bookmark.
+- List-card attendee stacks show at most three circles: one or two friend avatars, then a `+` avatar whenever more than two friends are attending.
+- The old horizontal card layout, address/price text, and `CHECK US OUT` button have been removed from the list feed.
+
+Current asset note: the card code supports ratio-based masonry image heights, but the bundled event thumbnails currently share the same `180x240` portrait dimensions. More visibly varied image heights will appear when varied-ratio event artwork is added.
 
 ### Event Detail
 
@@ -373,6 +393,7 @@ Design intent:
 
 - map/list exploration first;
 - editorial poster previews for event discovery from the map;
+- image-led two-column masonry browsing in the list view;
 - event-centered social proof;
 - compact mobile-first layouts;
 - large touch targets;
@@ -391,6 +412,7 @@ Design intent:
 - Do not use React Navigation screen props in app screens.
 - Keep interaction logging wired through `interactionLogService`.
 - Keep the map marker layer static. Do not connect marker rendering to preview open/close state.
+- Keep the list screen's masonry structure in `ListScreen.js`; tile-specific visual behavior belongs in `EventCard.js`.
 - Keep the project Expo Go friendly where possible, but do not let that block concrete prototype requirements when an Expo-compatible module or dev build would be justified.
 - Prefer Expo-compatible dependencies. Add new dependencies only when they solve a concrete UX, testing, or implementation need, and document why they were added.
 
@@ -410,20 +432,25 @@ Manual smoke test:
 3. Tap multiple event pins repeatedly.
 4. Confirm the map centers on the tapped event before the preview opens.
 5. Confirm the editorial poster preview opens centered on screen.
-6. Confirm event pins do not disappear after opening/closing previews.
-7. Confirm the user-location marker does not disappear after opening/closing previews.
-8. Confirm tapping outside the poster dismisses the preview and removes the blur.
-9. Confirm dragging on the blur/dismiss overlay dismisses the preview.
-10. Confirm the circular poster action button opens event details.
-11. Confirm long poster titles wrap cleanly at word boundaries or manual hyphen breaks, without native-looking one-letter splits.
-12. Confirm long poster addresses can wrap in the footer and do not show postal-code-like fragments.
-13. Save/unsave from an event card and from event details.
-14. Mark participation in event details.
-15. Open `/map/list` and open an event card.
-16. Use `/map/shake-discover` and shake the device.
-17. Confirm Discover Mode filters the list/map and can be dismissed.
-18. Confirm Discover Mode does not destabilize map markers.
-19. Open Profile list and map views.
+6. Confirm the location-status/recenter control disappears while the poster is open and returns after it collapses.
+7. Confirm event pins do not disappear after opening/closing previews.
+8. Confirm the user-location marker does not disappear after opening/closing previews.
+9. Confirm tapping outside the poster dismisses the preview and removes the blur.
+10. Confirm dragging on the blur/dismiss overlay dismisses the preview.
+11. Confirm the circular poster action button opens event details.
+12. Confirm long poster titles wrap cleanly at word boundaries or manual hyphen breaks, without native-looking one-letter splits or opening-animation flicker.
+13. Confirm long poster addresses can wrap in the footer and do not show postal-code-like fragments.
+14. Open `/map/list` and confirm the event feed renders as two masonry columns.
+15. Confirm list-card image taps open event details.
+16. Confirm list-card date/title taps open event details.
+17. Confirm list-card bookmark taps save/unsave without opening event details.
+18. Confirm list-card attendee stacks never show more than three circles.
+19. Save/unsave from event details.
+20. Mark participation in event details.
+21. Use `/map/shake-discover` and shake the device.
+22. Confirm Discover Mode filters the list/map and can be dismissed.
+23. Confirm Discover Mode does not destabilize map markers.
+24. Open Profile list and map views.
 
 ## Academic Delivery Notes
 
@@ -467,6 +494,7 @@ Useful metrics:
 - Add real media uploads.
 - Add a logs/debug export screen.
 - Continue refining the editorial map preview poster motion and layout.
+- Add varied-ratio event artwork to make the masonry feed's ratio-aware image heights more visible.
 - Add robust regression testing/checklists around custom map markers and preview interactions.
 - Consider a dev-build/native-marker strategy only if Expo Go limitations become blocking.
 - Add stronger recommendation logic for Discover Mode.
