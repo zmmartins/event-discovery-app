@@ -1,6 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { isLiquidGlassAvailable } from "expo-glass-effect";
-import { Icon, Label, NativeTabs, VectorIcon } from "expo-router/unstable-native-tabs";
+import {
+  Icon,
+  Label,
+  NativeTabs,
+  type NativeTabsBlurEffect,
+  type NativeTabsTriggerTabBarProps,
+  VectorIcon,
+} from "expo-router/unstable-native-tabs";
 import { Platform } from "react-native";
 
 import ScreenStatusBar from "../../src/components/ScreenStatusBar";
@@ -10,6 +17,7 @@ import {
   LIQUID_GLASS_FALLBACK_BACKGROUND_COLOR,
   LIQUID_GLASS_IOS_BACKGROUND_COLOR,
   LIQUID_GLASS_TAB_BLUR_EFFECT,
+  getLiquidGlassIconColor,
 } from "../../src/theme/liquidGlass";
 
 function getLiquidGlassAvailable() {
@@ -34,14 +42,19 @@ const tabBackgroundColor = Platform.select({
   default: LIQUID_GLASS_ANDROID_BACKGROUND_COLOR,
 });
 
-const tabBlurEffect =
-  Platform.OS === "ios" ? LIQUID_GLASS_TAB_BLUR_EFFECT : undefined;
+const tabBlurEffect: NativeTabsBlurEffect | undefined =
+  Platform.OS === "ios"
+    ? (LIQUID_GLASS_TAB_BLUR_EFFECT as NativeTabsBlurEffect)
+    : undefined;
 
-const lightTabBarProps = {
+const tabIconColor = getLiquidGlassIconColor({ active: false });
+const activeTabIconColor = getLiquidGlassIconColor({ active: true });
+
+const lightTabBarProps: NativeTabsTriggerTabBarProps = {
   backgroundColor: tabBackgroundColor,
   blurEffect: tabBlurEffect,
   disableTransparentOnScrollEdge: true,
-  iconColor: colors.iconMuted,
+  iconColor: tabIconColor,
   shadowColor: colors.effects.shadowSubtle,
 };
 
@@ -56,15 +69,15 @@ export default function TabsLayout() {
         disableTransparentOnScrollEdge
         disableIndicator={Platform.OS !== "android"}
         iconColor={{
-          default: colors.iconMuted,
-          selected: colors.iconActive,
+          default: tabIconColor,
+          selected: activeTabIconColor,
         }}
         indicatorColor={colors.effects.primaryIndicator}
         labelVisibilityMode="unlabeled"
         minimizeBehavior="automatic"
         rippleColor={colors.effects.primaryPressed}
         shadowColor={colors.effects.shadowSubtle}
-        tintColor={colors.iconActive}
+        tintColor={activeTabIconColor}
       >
         <NativeTabs.Trigger name="map">
           <NativeTabs.Trigger.TabBar {...lightTabBarProps} />
@@ -74,7 +87,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="map" />,
               selected: <VectorIcon family={Ionicons} name="map" />,
             }}
-            selectedColor={colors.iconActive}
+            selectedColor={activeTabIconColor}
           />
           <Label hidden>Explore</Label>
         </NativeTabs.Trigger>
@@ -87,7 +100,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="navigate" />,
               selected: <VectorIcon family={Ionicons} name="navigate" />,
             }}
-            selectedColor={colors.iconActive}
+            selectedColor={activeTabIconColor}
           />
           <Label hidden>Messages</Label>
         </NativeTabs.Trigger>
@@ -103,7 +116,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="search" />,
               selected: <VectorIcon family={Ionicons} name="search" />,
             }}
-            selectedColor={colors.iconActive}
+            selectedColor={activeTabIconColor}
           />
           <Label hidden>Search</Label>
         </NativeTabs.Trigger>
@@ -116,7 +129,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="people" />,
               selected: <VectorIcon family={Ionicons} name="people" />,
             }}
-            selectedColor={colors.iconActive}
+            selectedColor={activeTabIconColor}
           />
           <Label hidden>Community</Label>
         </NativeTabs.Trigger>
@@ -129,7 +142,7 @@ export default function TabsLayout() {
               default: <VectorIcon family={Ionicons} name="person" />,
               selected: <VectorIcon family={Ionicons} name="person" />,
             }}
-            selectedColor={colors.iconActive}
+            selectedColor={activeTabIconColor}
           />
           <Label hidden>Profile</Label>
         </NativeTabs.Trigger>

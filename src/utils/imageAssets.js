@@ -1,10 +1,10 @@
 export const avatarImages = {
-  ana: require("../assets/avatars/ana.png"),
-  clara: require("../assets/avatars/clara.png"),
-  ines: require("../assets/avatars/ines.png"),
-  joao: require("../assets/avatars/joao.png"),
-  miguel: require("../assets/avatars/miguel.png"),
-  rita: require("../assets/avatars/rita.png"),
+  ana: require("../assets/avatars/ana.jpeg"),
+  clara: require("../assets/avatars/clara.jpeg"),
+  ines: require("../assets/avatars/ines.jpeg"),
+  joao: require("../assets/avatars/joao.jpeg"),
+  miguel: require("../assets/avatars/miguel.jpeg"),
+  rita: require("../assets/avatars/rita.jpeg"),
 };
 
 export const eventImages = {

@@ -21,32 +21,25 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ScreenStatusBar from "../components/ScreenStatusBar";
-import {
-  getEventById,
-  joinEvent,
-  toggleSavedEvent,
-} from "../services/eventService";
-import {
-  LOG_ACTIONS,
-  logInteraction,
-} from "../services/interactionLogService";
+import { getEventById, joinEvent, toggleSavedEvent } from "../services/eventService";
+import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 import { eventImages } from "../utils/imageAssets";
 
 const avatarImages = {
-  ana: require("../assets/avatars/ana.png"),
-  clara: require("../assets/avatars/clara.png"),
-  ines: require("../assets/avatars/ines.png"),
-  joao: require("../assets/avatars/joao.png"),
-  miguel: require("../assets/avatars/miguel.png"),
-  rita: require("../assets/avatars/rita.png"),
+  ana: require("../assets/avatars/ana.jpeg"),
+  clara: require("../assets/avatars/clara.jpeg"),
+  ines: require("../assets/avatars/ines.jpeg"),
+  joao: require("../assets/avatars/joao.jpeg"),
+  miguel: require("../assets/avatars/miguel.jpeg"),
+  rita: require("../assets/avatars/rita.jpeg"),
 };
 
 const friendAvatarKeys = {
   Ana: "ana",
   Clara: "clara",
-  "Inês": "ines",
-  "João": "joao",
+  Inês: "ines",
+  João: "joao",
   Miguel: "miguel",
   Rita: "rita",
 };
@@ -141,14 +134,17 @@ function ExperienceRow({ names }) {
 
   return (
     <View style={styles.experienceRow}>
-      {experiences.concat(experiences).slice(0, 10).map((friend, index) => (
-        <Avatar
-          avatarKey={friend.avatarKey}
-          key={`${friend.id}-${index}`}
-          size={34}
-          style={index > 0 ? styles.overlappedAvatar : null}
-        />
-      ))}
+      {experiences
+        .concat(experiences)
+        .slice(0, 10)
+        .map((friend, index) => (
+          <Avatar
+            avatarKey={friend.avatarKey}
+            key={`${friend.id}-${index}`}
+            size={34}
+            style={index > 0 ? styles.overlappedAvatar : null}
+          />
+        ))}
       <View style={styles.moreCircle}>
         <Text style={styles.moreCircleText}>+</Text>
       </View>
@@ -166,12 +162,7 @@ function MapPreview() {
       <Text style={[styles.mapLabel, styles.mapLabelOne]}>Campo de Ourique</Text>
       <Text style={[styles.mapLabel, styles.mapLabelTwo]}>Estrela</Text>
       <Text style={[styles.mapLabel, styles.mapLabelThree]}>Lisbon</Text>
-      <Ionicons
-        name="location"
-        size={48}
-        color={colors.primary}
-        style={styles.mapPin}
-      />
+      <Ionicons name="location" size={48} color={colors.primary} style={styles.mapPin} />
     </View>
   );
 }
@@ -180,10 +171,7 @@ function RatingDots() {
   return (
     <View style={styles.ratingDots}>
       {[0, 1, 2, 3, 4].map((dot) => (
-        <View
-          key={dot}
-          style={[styles.ratingDot, dot === 4 && styles.ratingDotMuted]}
-        />
+        <View key={dot} style={[styles.ratingDot, dot === 4 && styles.ratingDotMuted]} />
       ))}
     </View>
   );
@@ -221,10 +209,7 @@ export default function EventDetailScreen() {
 
   const expandedY = 0;
   const ctaHeight = CTA_HEIGHT + CTA_BOTTOM_GAP;
-  const collapsedY = Math.max(
-    expandedY,
-    height - ctaHeight - SHEET_COLLAPSED_HEIGHT,
-  );
+  const collapsedY = Math.max(expandedY, height - ctaHeight - SHEET_COLLAPSED_HEIGHT);
   const expandedTitleSpacer =
     BACK_BUTTON_TOP_OFFSET +
     BACK_BUTTON_SIZE +
@@ -232,10 +217,7 @@ export default function EventDetailScreen() {
     (SHEET_HANDLE_TOP_PADDING + SHEET_HANDLE_HEIGHT + SHEET_HANDLE_BOTTOM_PADDING);
   const sheetHandleTopPadding = sheetY.interpolate({
     inputRange: [expandedY, collapsedY],
-    outputRange: [
-      insets.top + SHEET_HANDLE_TOP_PADDING,
-      SHEET_HANDLE_TOP_PADDING,
-    ],
+    outputRange: [insets.top + SHEET_HANDLE_TOP_PADDING, SHEET_HANDLE_TOP_PADDING],
     extrapolate: "clamp",
   });
   const titleTopSpacer = sheetY.interpolate({
@@ -278,13 +260,9 @@ export default function EventDetailScreen() {
   }, [ctaScale]);
 
   async function triggerDoubleHaptic() {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
-      () => null,
-    );
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => null);
     await wait(95);
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
-      () => null,
-    );
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => null);
   }
 
   const animateSheetTo = useCallback(
@@ -308,7 +286,7 @@ export default function EventDetailScreen() {
         }
       });
     },
-    [expandedY, resetScrollToTop, sheetY],
+    [expandedY, resetScrollToTop, sheetY]
   );
 
   const handlePanResponder = useMemo(
@@ -322,7 +300,7 @@ export default function EventDetailScreen() {
         },
         onPanResponderMove: (_, gestureState) => {
           sheetY.setValue(
-            clamp(sheetStartY.current + gestureState.dy, expandedY, collapsedY),
+            clamp(sheetStartY.current + gestureState.dy, expandedY, collapsedY)
           );
         },
         onPanResponderRelease: (_, gestureState) => {
@@ -333,7 +311,7 @@ export default function EventDetailScreen() {
           animateSheetTo(shouldExpand ? expandedY : collapsedY);
         },
       }),
-    [animateSheetTo, collapsedY, expandedY, sheetY],
+    [animateSheetTo, collapsedY, expandedY, sheetY]
   );
 
   const sheetExpansionResponder = useMemo(
@@ -348,7 +326,7 @@ export default function EventDetailScreen() {
         },
         onPanResponderMove: (_, gestureState) => {
           sheetY.setValue(
-            clamp(sheetStartY.current + gestureState.dy, expandedY, collapsedY),
+            clamp(sheetStartY.current + gestureState.dy, expandedY, collapsedY)
           );
         },
         onPanResponderRelease: (_, gestureState) => {
@@ -362,13 +340,7 @@ export default function EventDetailScreen() {
           animateSheetTo(collapsedY);
         },
       }),
-    [
-      animateSheetTo,
-      collapsedY,
-      expandedY,
-      isSheetExpanded,
-      sheetY,
-    ],
+    [animateSheetTo, collapsedY, expandedY, isSheetExpanded, sheetY]
   );
 
   const scrollCollapseResponder = useMemo(
@@ -390,7 +362,7 @@ export default function EventDetailScreen() {
           animateSheetTo(expandedY);
         },
       }),
-    [animateSheetTo, collapsedY, expandedY, isSheetExpanded, sheetY],
+    [animateSheetTo, collapsedY, expandedY, isSheetExpanded, sheetY]
   );
 
   useEffect(() => {
@@ -431,7 +403,7 @@ export default function EventDetailScreen() {
       }).catch(() => null);
 
       return undefined;
-    }, [eventId, pathname]),
+    }, [eventId, pathname])
   );
 
   async function handleJoin() {
@@ -500,10 +472,7 @@ export default function EventDetailScreen() {
   return (
     <View style={styles.container}>
       <Image source={imageSource} style={styles.heroImage} />
-      <ScreenStatusBar
-        variant={statusBarVariant}
-        withImageOverlay={!isSheetExpanded}
-      />
+      <ScreenStatusBar variant={statusBarVariant} withImageOverlay={!isSheetExpanded} />
 
       <Pressable
         accessibilityLabel="Go back"
@@ -525,10 +494,7 @@ export default function EventDetailScreen() {
       >
         <View {...handlePanResponder.panHandlers} style={styles.sheetGrabArea}>
           <Animated.View
-            style={[
-              styles.sheetGrabAreaInner,
-              { paddingTop: sheetHandleTopPadding },
-            ]}
+            style={[styles.sheetGrabAreaInner, { paddingTop: sheetHandleTopPadding }]}
           >
             <View style={styles.sheetHandle} />
           </Animated.View>
@@ -554,17 +520,12 @@ export default function EventDetailScreen() {
             <View style={styles.titleRow}>
               <Text style={styles.title}>{event.title}</Text>
               <Pressable
-                accessibilityLabel={
-                  isSaved ? "Remove saved event" : "Save event"
-                }
+                accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSaved }}
                 hitSlop={8}
                 onPress={handleSavePress}
-                style={({ pressed }) => [
-                  styles.saveButton,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
               >
                 <Animated.View style={{ transform: [{ scale: saveScale }] }}>
                   <Ionicons

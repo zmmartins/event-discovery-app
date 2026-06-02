@@ -12,6 +12,7 @@ import {
   LIQUID_GLASS_FALLBACK_BACKGROUND_COLOR,
   LIQUID_GLASS_IOS_BACKGROUND_COLOR,
   LIQUID_GLASS_TINT_COLOR,
+  getLiquidGlassIconColor,
 } from "../theme/liquidGlass";
 import {
   LOG_ACTIONS,
@@ -137,7 +138,7 @@ function TopNavButton({ item }) {
       <Ionicons
         name={item.icon}
         size={22}
-        color={isActive ? colors.iconActive : colors.iconMuted}
+        color={getLiquidGlassIconColor({ active: Boolean(isActive) })}
       />
     </Pressable>
   );
