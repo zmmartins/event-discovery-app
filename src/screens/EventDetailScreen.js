@@ -31,12 +31,7 @@ import {
   logInteraction,
 } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
-
-const thumbnailImages = {
-  "art-gallery": require("../assets/events/art-gallery.png"),
-  "film-night": require("../assets/events/film-night.png"),
-  "rooftop-jazz": require("../assets/events/rooftop-jazz.png"),
-};
+import { eventImages } from "../utils/imageAssets";
 
 const avatarImages = {
   ana: require("../assets/avatars/ana.png"),
@@ -497,8 +492,7 @@ export default function EventDetailScreen() {
     );
   }
 
-  const imageSource =
-    thumbnailImages[event.thumbnailKey] ?? thumbnailImages["art-gallery"];
+  const imageSource = eventImages[event.thumbnailKey] ?? eventImages["art-gallery"];
   const price = event.price?.toUpperCase?.() ?? "FREE";
   const timeRange = event.time ? `${event.time} - 00:00` : "00:00 - 00:00";
   const statusBarVariant = isSheetExpanded ? "lightBackground" : "image";

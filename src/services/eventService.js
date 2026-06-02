@@ -27,11 +27,7 @@ function getDistanceInKm(firstCoordinate, secondCoordinate) {
       Math.sin(longitudeDelta / 2) *
       Math.sin(longitudeDelta / 2);
 
-  return (
-    earthRadiusKm *
-    2 *
-    Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
-  );
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
 
 function decorateEvent(event, user) {
@@ -39,8 +35,7 @@ function decorateEvent(event, user) {
 
   return {
     ...event,
-    isJoined:
-      Boolean(event.isJoined) || user.participatingEventIds.includes(event.id),
+    isJoined: Boolean(event.isJoined) || user.participatingEventIds.includes(event.id),
     isSaved: user.savedEventIds.includes(event.id),
   };
 }
@@ -72,7 +67,7 @@ export async function joinEvent(id) {
   await addParticipatingEvent(id);
 
   events = events.map((event) =>
-    event.id === id ? { ...event, isJoined: true } : event,
+    event.id === id ? { ...event, isJoined: true } : event
   );
 
   return getEventById(id);
@@ -99,7 +94,8 @@ export async function getDiscoverEvents({
         getDistanceInKm(origin, {
           latitude: event.latitude,
           longitude: event.longitude,
-        }) + Math.random() * 0.35,
+        }) +
+        Math.random() * 0.35,
     }))
     .sort((firstEvent, secondEvent) => firstEvent.ranking - secondEvent.ranking)
     .slice(0, limit)

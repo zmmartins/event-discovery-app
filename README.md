@@ -264,7 +264,7 @@ Current list behavior:
 - List-card attendee stacks show at most three circles: one or two friend avatars, then a `+` avatar whenever more than two friends are attending.
 - The old horizontal card layout, address/price text, and `CHECK US OUT` button have been removed from the list feed.
 
-Current asset note: the card code supports ratio-based masonry image heights, but the bundled event thumbnails currently share the same `180x240` portrait dimensions. More visibly varied image heights will appear when varied-ratio event artwork is added.
+Current asset note: the card code supports ratio-based masonry image heights, and the bundled JPG event thumbnails use varied portrait dimensions. Heights are still clamped in `EventCard` so the feed keeps a controlled masonry rhythm.
 
 ### Event Detail
 
@@ -319,17 +319,18 @@ Current event shape:
 ```js
 {
   id: "event-001",
-  title: "Art Gallery Inauguration",
+  title: "Cascais Print Salon",
   category: "Art",
-  description: "Inauguracao de uma galeria independente em Lisboa.",
-  locationName: "R. Generica, 5, 1234-123, Lisboa",
-  thumbnailKey: "art-gallery",
-  latitude: 38.7223,
-  longitude: -9.1393,
-  date: "2026-06-03",
+  description: "Abertura de uma mostra de gravura contemporanea junto a baia.",
+  locationName: "Casa do Farol, Cascais, Lisboa",
+  thumbnailKey: "art_gallery1",
+  organizerName: "Casa do Farol",
+  latitude: 38.6968,
+  longitude: -9.4204,
+  date: "2026-06-05",
   time: "19:00",
   price: "Free",
-  popularity: 42,
+  popularity: 58,
   friendsGoing: ["Ana", "Miguel"],
   friendsWentBefore: ["Rita", "Joao", "Clara"],
   attendingFriends: [
@@ -494,7 +495,7 @@ Useful metrics:
 - Add real media uploads.
 - Add a logs/debug export screen.
 - Continue refining the editorial map preview poster motion and layout.
-- Add varied-ratio event artwork to make the masonry feed's ratio-aware image heights more visible.
+- Continue adding varied-ratio event artwork to make the masonry feed feel richer.
 - Add robust regression testing/checklists around custom map markers and preview interactions.
 - Consider a dev-build/native-marker strategy only if Expo Go limitations become blocking.
 - Add stronger recommendation logic for Discover Mode.
