@@ -2,55 +2,187 @@ import { rankEventsByDiscoveryDistance } from "../domain/discovery/discoveryRank
 import { DEFAULT_DISCOVER_COORDINATE } from "../domain/events/geo";
 import { filterEventsByCategory } from "../domain/events/eventSelectors";
 import {
-  decorateEventForUser,
-  decorateEventsForUser,
+  EVENT_AVAILABILITY,
+  EVENT_STATUS,
+  PARTICIPATION_STATUS,
+  createEventViewModel,
+  getEventAvailability,
+  getUserActiveParticipation,
 } from "../domain/events/eventState";
+import { listExperienceRecords } from "../repositories/profileRepository";
 import {
-  getEvent,
-  listEvents,
-  patchEvent,
+  createEventParticipationRecord,
+  createUserSavedEventRecord,
+  deleteUserSavedEventRecord,
+  disableActiveParticipationRecordsForEvent,
+  getEventRecord,
+  listEventImageRecords,
+  listEventParticipationRecords,
+  listEventRecords,
+  listEventTypeRecords,
+  listLocationRecords,
+  listOrganizerRecords,
+  listUserSavedEventRecords,
 } from "../repositories/eventRepository";
 import {
-  addParticipatingEvent,
-  getCurrentUser,
-  toggleSavedEvent as toggleUserSavedEvent,
-} from "./userService";
+  getCurrentUserRecord,
+  listFriendshipRecords,
+  listUserRecords,
+} from "../repositories/userRepository";
 
 export { DEFAULT_DISCOVER_COORDINATE };
 
-export async function getEvents() {
-  const [currentUser, events] = await Promise.all([
-    getCurrentUser(),
-    listEvents(),
+function createRecordMap(records = []) {
+  return new Map(records.map((record) => [record.id, record]));
+}
+
+async function getEventCompositionData() {
+  const currentUser = await getCurrentUserRecord();
+  const [
+    users,
+    friendships,
+    events,
+    eventTypes,
+    organizers,
+    locations,
+    images,
+    participations,
+    savedEvents,
+    experiences,
+  ] = await Promise.all([
+    listUserRecords(),
+    listFriendshipRecords(),
+    listEventRecords(),
+    listEventTypeRecords(),
+    listOrganizerRecords(),
+    listLocationRecords(),
+    listEventImageRecords(),
+    listEventParticipationRecords(),
+    listUserSavedEventRecords(),
+    listExperienceRecords(),
   ]);
 
-  return decorateEventsForUser(events, currentUser);
+  return {
+    currentUser,
+    events,
+    eventTypes,
+    eventTypesById: createRecordMap(eventTypes),
+    experiences,
+    friendships,
+    images,
+    locations,
+    locationsById: createRecordMap(locations),
+    organizers,
+    organizersById: createRecordMap(organizers),
+    participations,
+    savedEvents,
+    users,
+  };
+}
+
+function createEventViewModelFromRecord(event, data) {
+  return createEventViewModel({
+    currentUser: data.currentUser,
+    event,
+    eventType: data.eventTypesById.get(event.eventTypeId),
+    experiences: data.experiences,
+    friendships: data.friendships,
+    images: data.images,
+    location: data.locationsById.get(event.locationId),
+    organizer: data.organizersById.get(event.organizerId),
+    participations: data.participations,
+    savedEvents: data.savedEvents,
+    users: data.users,
+  });
+}
+
+export async function getEvents() {
+  const data = await getEventCompositionData();
+
+  return data.events.map((event) => createEventViewModelFromRecord(event, data));
 }
 
 export async function getEventById(id) {
-  const [currentUser, event] = await Promise.all([
-    getCurrentUser(),
-    getEvent(id),
-  ]);
+  const data = await getEventCompositionData();
+  const event = data.events.find((nextEvent) => nextEvent.id === id);
 
-  return decorateEventForUser(event, currentUser);
+  return event ? createEventViewModelFromRecord(event, data) : null;
 }
 
 export async function getEventsByCategory(category) {
-  const decoratedEvents = await getEvents();
+  const events = await getEvents();
 
-  return filterEventsByCategory(decoratedEvents, category);
+  return filterEventsByCategory(events, category);
 }
 
 export async function joinEvent(id) {
-  await addParticipatingEvent(id);
-  await patchEvent(id, { isJoined: true });
+  const currentUser = await getCurrentUserRecord();
+  const data = await getEventCompositionData();
+  const event = data.events.find((nextEvent) => nextEvent.id === id);
+
+  if (!currentUser || !event) {
+    return null;
+  }
+
+  const availability = getEventAvailability(event, data.participations);
+
+  if (event.status === EVENT_STATUS.canceled) {
+    await disableActiveParticipationRecordsForEvent(id, "event_canceled");
+    return getEventById(id);
+  }
+
+  if (availability !== EVENT_AVAILABILITY.available) {
+    return getEventById(id);
+  }
+
+  const existingParticipation = getUserActiveParticipation(
+    data.participations,
+    id,
+    currentUser.id
+  );
+
+  if (!existingParticipation) {
+    await createEventParticipationRecord({
+      attendedAt: null,
+      canceledAt: null,
+      disabledAt: null,
+      disabledReason: null,
+      eventId: id,
+      id: `participation-${currentUser.id}-${id}-${Date.now()}`,
+      registeredAt: new Date().toISOString(),
+      status: PARTICIPATION_STATUS.registered,
+      userId: currentUser.id,
+    });
+  }
 
   return getEventById(id);
 }
 
 export async function toggleSavedEvent(id) {
-  await toggleUserSavedEvent(id);
+  const [currentUser, eventRecord, savedEvents] = await Promise.all([
+    getCurrentUserRecord(),
+    getEventRecord(id),
+    listUserSavedEventRecords(),
+  ]);
+
+  if (!currentUser || !eventRecord) {
+    return null;
+  }
+
+  const existingSave = savedEvents.find(
+    (record) => record.userId === currentUser.id && record.eventId === id
+  );
+
+  if (existingSave) {
+    await deleteUserSavedEventRecord(currentUser.id, id);
+  } else {
+    await createUserSavedEventRecord({
+      eventId: id,
+      id: `saved-${currentUser.id}-${id}-${Date.now()}`,
+      savedAt: new Date().toISOString(),
+      userId: currentUser.id,
+    });
+  }
 
   return getEventById(id);
 }
@@ -60,8 +192,8 @@ export async function getDiscoverEvents({
   limit = 4,
   longitude = DEFAULT_DISCOVER_COORDINATE.longitude,
 } = {}) {
-  const decoratedEvents = await getEvents();
+  const events = await getEvents();
   const origin = { latitude, longitude };
 
-  return rankEventsByDiscoveryDistance(decoratedEvents, origin).slice(0, limit);
+  return rankEventsByDiscoveryDistance(events, origin).slice(0, limit);
 }

@@ -2,9 +2,9 @@
 // Currently backed by local mock data; replace these exports with API-backed implementations later.
 
 export {
-  addCurrentUserParticipatingEvent,
   getCurrentUserRecord,
   getUserById,
-  toggleCurrentUserSavedEvent,
+  listFriendshipRecords,
+  listUserRecords,
   updateCurrentUser,
 } from "../data/local/localUserRepository";

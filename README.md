@@ -1,56 +1,90 @@
 # Event Discovery App
 
-Functional mobile prototype for the course **Interactive Multimedia Applications 2025/2026**.
+Mobile-first event discovery prototype for the course **Interactive Multimedia
+Applications 2025/2026**.
 
-The app is a social local event discovery prototype for exploring nearby cultural experiences in Lisbon. It focuses on map/list discovery, stable custom map pins, editorial event previews, social attendance context, a cultural-passport style profile, shake-to-discover interaction, location awareness, haptic/visual feedback, and interaction logging for usability testing.
+The app explores a social, local-event discovery experience built around map
+exploration, image-led browsing, friend context, a cultural-passport profile,
+shake-to-discover, location awareness, haptic feedback, and interaction logging
+for usability testing.
+
+The current data set is local mock data. Events are spread across Portugal, while
+the default map/discovery origin is Lisbon. The mock data layer is normalized
+into backend-like entities and relationship records, and services compose those
+records into the UI-friendly objects consumed by screens.
 
 ## Current State
 
-The project is implemented with **Expo 54**, **React Native 0.81**, **React 19**, and **Expo Router 6**. The routing layer lives in `app/`; screen implementations, components, services, repositories, local data adapters, domain helpers, utilities, and theme files live in `src/`.
+The project currently uses:
 
-Implemented core areas:
+- Expo 54
+- React Native 0.81
+- React 19
+- Expo Router 6
+- JavaScript for most app code
+- TypeScript/TSX for route files and Expo Router layouts
 
-- Native tab shell with Explore, Messages, Search, Community, and Profile tabs.
-- Nested Explore stack with map, list, shake-discover, and notifications routes.
-- Map exploration with custom event pins, per-pin image-load handling, user-location recentering, a transient location-status control, centered editorial poster previews, and event-detail navigation.
-- List exploration with a two-column masonry-style event feed, image-led cards, save/bookmark support, and Discover Mode filtering.
-- Event detail screen with a draggable sheet, event media, social context, save/bookmark, participate action, and haptic feedback.
-- Profile screen with list and map views for attended mock experiences.
-- Shake to Discover using the accelerometer, vibration/haptics, animated feedback, and Discover Mode activation.
-- Interaction logging with AsyncStorage persistence and JSON/CSV/bundle export helpers.
-- Generated event image variants for pin, preview/card, and detail contexts.
-- Adaptive Liquid Glass icon colors for iOS navigation surfaces where supported.
-- Placeholder tabs for Messages, Search, Community, and Notifications.
+The app is native-focused. It is intended to be validated on iOS or Android
+because the current route graph imports `react-native-maps`.
+
+Implemented areas:
+
+- Native bottom tab shell with Explore, Messages, Search, Community, and Profile.
+- Explore stack with map, list, shake-discover, and notifications routes.
+- Explore top navigation for filter, map, list, shake-discover, and
+  notifications. The filter button currently logs an interaction only.
+- Map discovery with Google-provider `react-native-maps`, custom map styling,
+  custom event pins, user-location recentering, location-status UI, editorial
+  event previews, and event-detail navigation.
+- Stable map marker rendering: custom marker children use generated pin images
+  and stop tracking view changes after their images load.
+- List discovery with a two-column masonry feed, generated preview images,
+  attendee stacks, bookmark toggling, and Discovery Mode filtering.
+- Event detail screen with generated detail media, social context, draggable
+  sheet behavior, bookmark toggling, participation action, haptics, and
+  interaction logging.
+- Profile screen with list and map views for mock attended experiences.
+- Shake to Discover with accelerometer detection, vibration, haptic feedback,
+  animated visual feedback, Discovery Mode activation, and redirect to the list.
+- Interaction logging stored in AsyncStorage, with JSON/CSV/bundle export helper
+  functions.
+- Normalized local mock data for event types, organizers, locations, events,
+  event images, users, friendships, saved events, event participations, and
+  profile experiences.
+- Event image variant generation for map pins, previews/cards, and detail media.
+- Conditional Liquid Glass/native-tab styling helpers for supported iOS surfaces.
+- Placeholder screens for Messages, Search, Community, and Notifications.
 
 Out of scope for the current academic prototype:
 
-- Authentication.
-- Real backend.
-- Real event publishing.
-- Payments or ticketing.
-- Chat/messaging.
-- Push notifications.
-- Real image uploads.
+- Authentication
+- Real backend/API integration
+- Real event publishing
+- Payments or ticketing
+- Chat/messaging implementation
+- Push notifications
+- Image upload flows
+- Dedicated in-app interaction-log/debug screen
 
 ## Tech Stack
 
-- Expo / Expo Go
-- React Native
+- Expo / Expo CLI
 - Expo Router
-- JavaScript for app code, TypeScript route files
+- React Native
 - React Native Maps
 - Expo Location
 - Expo Sensors
 - Expo Haptics
 - Expo Blur
-- React Native Reanimated
+- Expo Glass Effect
 - Expo FileSystem and Sharing
-- Expo Glass Effect and native tabs
 - Expo Updates
 - AsyncStorage
-- Sharp for deterministic local image-variant generation
-- Knip for unused-code/dependency checks
-- Mock local data
+- React Native Reanimated
+- React Native Gesture Handler
+- Sharp for deterministic local event-image variants
+- Knip for unused-code/dependency audits
+- Local mock repositories and mock records
 
 ## Run The Project
 
@@ -77,11 +111,16 @@ npm run lint
 npm run unused
 ```
 
-`npm run images:events` regenerates the event image variants from the source images in `src/assets/events`.
+`npm run images:events` regenerates event image variants from source images in
+`src/assets/events`.
 
-`npm run unused` runs Knip using `knip.json`. The configuration treats `app/`, app config files, and scripts as entry points, scans `src/`, `app/`, and `scripts/`, and ignores generated/static assets under `src/assets`. At the moment, Knip reports several intentionally preserved compatibility exports in services/repositories/theme/image helpers, so treat it as an audit tool rather than a required green check.
+`npm run unused` runs Knip using `knip.json`. Treat it as an audit tool; the app
+currently keeps some compatibility exports around service/repository/theme/image
+helpers.
 
-The app is native-focused. The `web` script exists because this is an Expo project, but the current route graph imports `react-native-maps`; web export currently fails on a native-only `react-native-maps` import. Use iOS/Android for app validation.
+The `web` script exists because this is an Expo project, but the current app is
+not web-ready. The route graph imports `react-native-maps`, so use iOS or
+Android for validation.
 
 Clear Expo cache:
 
@@ -89,38 +128,64 @@ Clear Expo cache:
 npx expo start -c
 ```
 
-Tunnel mode is useful when the physical device cannot reach the local development server:
+Tunnel mode can help when a physical device cannot reach the local development
+server:
 
 ```bash
 npx expo start --tunnel
 ```
 
+Current script caveat: `package.json` still contains `npm run reset-project`, but
+`scripts/reset-project.js` is not present in this repository. Do not treat that
+script as a supported workflow until the script is restored or the package entry
+is removed.
+
 ### Known Local Startup Issue
 
-On the current local setup, `npx expo start -c` has previously failed under Node `v22.21.0` with:
+On the current local setup, `npx expo start -c` has previously failed under Node
+`v22.21.0` with:
 
 ```text
 RangeError [ERR_SOCKET_BAD_PORT]: options.port should be >= 0 and < 65536. Received type number (65536).
 ```
 
-This comes from Expo CLI's port probing through `freeport-async`, not from application code. If it appears, use a Node LTS version supported by the Expo SDK, for example Node 20, then rerun `npm install` if needed and start Expo again.
+This comes from Expo CLI's port probing through `freeport-async`, not from app
+code. If it appears, use a Node LTS version supported by the Expo SDK, for
+example Node 20, then rerun `npm install` if needed and start Expo again.
 
 ## Configuration
 
-Location permission text and native identifiers are configured through `app.config.js`.
+Runtime/native configuration is split between `app.json` and `app.config.js`.
 
-Google Maps API keys are read from environment variables for native builds:
+`app.config.js` currently:
+
+- sets the iOS bundle identifier and Android package to
+  `com.eventdiscovery.app`;
+- injects iOS and Android location permission configuration;
+- reads native Google Maps keys from environment variables;
+- ensures the `expo-font` plugin is present.
+
+Google Maps API keys for native builds:
 
 ```bash
 GOOGLE_MAPS_IOS_API_KEY=...
 GOOGLE_MAPS_ANDROID_API_KEY=...
 ```
 
-The app falls back to a default Lisbon region when user location is unavailable or denied.
+The app falls back to a default Lisbon region when user location is unavailable
+or permission is denied.
+
+Known config cleanup before production-style builds:
+
+- `app.json` references icon/splash files under `assets/images`, but that
+  directory currently has no committed image files.
+- `app.json` currently has a malformed `u<serInterfaceStyle` key, so it is not
+  setting Expo's `userInterfaceStyle` option.
 
 ## Routing
 
-Expo Router is the only navigation system used by screens. Route files stay thin and import/export screen implementations from `src/screens`.
+Expo Router is the only navigation system used by screens. Route files stay thin
+and import screen implementations from `src/screens`.
 
 Current route structure:
 
@@ -132,12 +197,6 @@ app/
   (tabs)/
     _layout.tsx
     index.tsx
-    map/
-      _layout.tsx
-      index.tsx
-      list.tsx
-      notifications.tsx
-      shake-discover.tsx
     list.tsx
     notifications.tsx
     shake-discover.tsx
@@ -145,18 +204,27 @@ app/
     search.tsx
     community.tsx
     profile.tsx
+    map/
+      _layout.tsx
+      index.tsx
+      list.tsx
+      notifications.tsx
+      shake-discover.tsx
 ```
 
 Important routes:
 
 - `/` redirects to `/map`.
+- `/list` redirects to `/map/list`.
+- `/notifications` redirects to `/map/notifications`.
+- `/shake-discover` redirects to `/map/shake-discover`.
 - `/map` renders `MapScreen`.
 - `/map/list` renders `ListScreen`.
 - `/map/shake-discover` renders `ShakeDiscoverScreen`.
 - `/map/notifications` renders `NotificationsScreen`.
 - `/event/[id]` renders `EventDetailScreen`.
 - `/profile` renders `ProfileScreen`.
-- `/messages`, `/search`, and `/community` are placeholder tabs.
+- `/messages`, `/search`, and `/community` render placeholder tab screens.
 
 Navigation to event details uses Expo Router:
 
@@ -173,6 +241,8 @@ Event details read the route parameter with `useLocalSearchParams()`.
 
 ```text
 app/                         File-based Expo Router routes
+assets/images/               Static Expo icon/splash target directory, currently empty
+scripts/                     Local maintenance scripts
 src/assets/avatars/          Mock avatar images
 src/assets/events/           Source mock event images
 src/assets/events/pins/      Generated 160x160 pin images
@@ -182,15 +252,13 @@ src/components/              Reusable UI components
 src/context/                 Discovery Mode context
 src/data/                    Mock source records and local data adapters
 src/data/local/              Local repository implementations backed by mock data
-src/domain/                  Pure event, discovery, and profile domain helpers
+src/domain/                  Pure event, discovery, and profile helpers
 src/hooks/                   Interaction and sensor hooks
 src/repositories/            Replaceable data-access facades
 src/screens/                 Screen implementations
-src/services/                Data, logging, location, profile, user services
-src/theme/                   Colors, map style, Liquid Glass helpers
+src/services/                Data, logging, location, profile, and user services
+src/theme/                   Colors, map style, and Liquid Glass helpers
 src/utils/                   Image asset lookup helpers
-scripts/                     Local maintenance scripts
-knip.json                    Unused-code/dependency check configuration
 ```
 
 Core screens:
@@ -218,15 +286,18 @@ Core components:
 - `ScreenStatusBar.js`
 - `PlaceholderScreen.js`
 
-## Feature Details
+## Feature Notes
 
 ### Event Image Assets
 
-Source event images live directly under `src/assets/events`. Generated variants live in:
+Source event images live directly under `src/assets/events`. Generated variants
+live in:
 
 - `src/assets/events/pins`: 160x160 JPG square crops for map marker snapshots.
-- `src/assets/events/previews`: JPG images resized to fit within 900px on the longest side for cards, posters, lists, and profile memories.
-- `src/assets/events/details`: JPG images resized to fit within 1600px on the longest side for event detail hero media.
+- `src/assets/events/previews`: JPG images resized to fit within 900px on the
+  longest side for cards, posters, lists, and profile memories.
+- `src/assets/events/details`: JPG images resized to fit within 1600px on the
+  longest side for event detail media.
 
 Regenerate variants with:
 
@@ -234,145 +305,176 @@ Regenerate variants with:
 npm run images:events
 ```
 
-The generator is `scripts/generate-event-image-variants.js`. It uses Sharp, accepts `.jpg`, `.jpeg`, `.png`, and `.webp` source files, writes deterministic names such as `art_gallery1_pin.jpg`, and ignores the generated `pins`, `previews`, and `details` folders so variants are not processed again.
+The generator is `scripts/generate-event-image-variants.js`. It uses Sharp,
+accepts `.jpg`, `.jpeg`, `.png`, and `.webp` source files, writes deterministic
+names such as `art_gallery1_pin.jpg`, and ignores the generated `pins`,
+`previews`, and `details` folders so variants are not processed again.
 
 Image lookup is centralized in `src/utils/imageAssets.js`:
 
-- `getEventPinImage(key)` for map pins and experience pins.
-- `getEventPreviewImage(key)` for cards, poster previews, list images, and profile memory tiles.
-- `getEventDetailImage(key)` for event detail hero images.
+- `getEventPinImage(key)` for map pins and profile experience pins.
+- `getEventPreviewImage(key)` for cards, poster previews, list images, and
+  profile memory tiles.
+- `getEventDetailImage(key)` for event detail media.
 - `getEventImage(key)` remains as a backward-compatible alias to preview images.
 
-Do not manually edit generated variants. Update the source image, then rerun `npm run images:events`.
+`imageAssets.js` also keeps legacy keys such as `art-gallery`, `film-night`, and
+`rooftop-jazz` so existing profile photo refs resolve to current generated event
+images.
+
+Do not manually edit generated variants. Update the source image, then rerun
+`npm run images:events`.
 
 ### Map
 
-`MapScreen.js` uses `react-native-maps` with Google provider, the custom map style in `src/theme/mapStyle.js`, event markers, and a custom user-location marker.
-
-Current marker behavior:
-
-- Event pins are custom React marker children rendered with `EventPin`.
-- Event marker keys remain stable by `event.id`.
-- Event markers keep `tracksViewChanges` enabled only until their pin image finishes loading.
-- `EventPin` reports `onImageLoad`; `MapScreen` waits one animation frame and then freezes that marker by setting `tracksViewChanges={false}`.
-- Loaded pin-image state resets when the focused map fetches/refilters its event set.
-- The marker layer is intentionally static and independent from preview state.
-- Opening or closing a preview must not hide, unmount, rekey, remount, refresh, or opacity-toggle event markers.
-- The selected marker remains mounted and visible underneath the overlay.
-- Event pin layout/size is derived from event data but frozen per JS session through the session layout helper in `EventPin.js`.
-- Event pins use the generated pin image variant through `getEventPinImage`.
-- The expanded preview is a React Native overlay rendered by `MorphingEventPreview`, not a map marker.
-- The map recenters on the selected event before the preview opens.
-- A blur/dismiss overlay appears behind the expanded preview and blocks map interaction while the preview is open.
-- The location-status/recenter control disappears while an event preview is open and returns after the poster collapses back to the map.
-- The location-status control is translucent when inactive and becomes a solid primary-green control with dark text/icon when the map is centered on the user.
-
-Important marker stability rule:
-
-Do not make preview state mutate the marker layer. Preview interactions must not change marker visibility, keys, mount state, or marker image-load refresh behavior. Event marker `tracksViewChanges` should only be controlled by pin image loading. This rule exists because custom React children inside `react-native-maps` markers can become unstable if repeatedly refreshed or remounted.
-
-The map requests foreground location through `locationService.js`, recenters when possible, and logs permission/location outcomes.
-
-### Morphing Preview
-
-`MorphingEventPreview.js` animates from the tapped pin geometry into a centered editorial poster-style overlay.
+`MapScreen.js` uses `react-native-maps` with Google provider, the custom style in
+`src/theme/mapStyle.js`, event markers, and a custom user-location marker.
 
 Current behavior:
 
-- The map centers on the selected event before the preview opens.
-- The preview morph starts from the tapped pin's screen geometry.
-- The expanded preview is centered on the screen and no longer uses a tail.
-- A blur/dismiss overlay is rendered behind the preview.
-- Tapping outside the preview or dragging on the overlay dismisses the preview.
-- The poster layout presents the event title, date/time, social attendance context, organizer/venue label, square event artwork, and price/address metadata.
-- Poster titles are sized by a custom layout solver that chooses word-boundary line breaks, font size, and line height together.
-- Title hyphenation is used only as a fallback for titles that cannot fit at normal word boundaries.
-- Poster title lines render as one native `Text` element per solved line and do not use native auto-shrinking, which keeps 3-line titles stable during the morph animation.
-- The date/time stack is rotated and aligned with the title row.
-- The footer uses compact editorial/monospace support text, removes postal-code-like address fragments, and allows the address to wrap to two lines.
-- The morphing transition image uses the generated pin image variant.
-- A separate static preview image layer is mounted at the final poster image size from the start, uses `getEventPreviewImage`, and fades in after a short delay so the spring bounce can settle before the sharper image appears.
-- The circular arrow action button opens `/event/[id]`.
-- Close completion is reported back to `MapScreen` so preview state can be cleared after the morph-out animation.
-
-The preview receives its poster geometry from `MapScreen`, including centered card dimensions, header/footer section heights, square artwork size, and the tapped pin's morph start geometry.
+- Events render as custom React marker children through `EventPin`.
+- Pin size is based on event popularity.
+- Friend presence adds the secondary-color ring around pins.
+- Event marker keys are stable by `event.id`.
+- `tracksViewChanges` stays enabled only until each pin image finishes loading.
+- The expanded event preview is a React Native overlay rendered by
+  `MorphingEventPreview`, not a map marker.
+- Opening or closing a preview does not intentionally remount or hide the marker
+  layer.
+- The map requests foreground location through `locationService.js`, recenters
+  when possible, and logs permission/location outcomes.
+- The location-status control shows Lisbon, locating, or near-you state and can
+  recenter the map when location is available.
 
 ### List
 
-`ListScreen.js` loads events through `eventService.js`, supports bookmark updates, and respects Discovery Mode filtering.
+`ListScreen.js` loads events through `eventService.js`, supports bookmark
+updates, and respects Discovery Mode filtering.
 
-Current list behavior:
+Current behavior:
 
-- The list uses a `ScrollView` with exactly two independently rendered columns.
+- The feed uses a `ScrollView` with two independently rendered columns.
 - Events are split between columns by alternating index.
-- Each `EventCard` receives the calculated column width, so all thumbnails share the same column width.
-- `EventCard` is a vertical masonry tile: image first, then an uppercase date/title block with a compact vertical attendee stack.
-- Thumbnail height is calculated from the local image aspect ratio with a min/max clamp.
-- Tapping the image opens event details.
-- Tapping the date/title area opens event details.
-- Tapping the bookmark only toggles saved state and keeps the existing haptic/logging behavior.
-- The bookmark has no circular background; inactive state is a translucent outline over the image and active state is a primary-green bookmark.
-- List-card attendee stacks show at most three circles: one or two friend avatars, then a `+` avatar whenever more than two friends are attending.
-- The old horizontal card layout, address/price text, and `CHECK US OUT` button have been removed from the list feed.
-
-Current asset note: cards use generated preview image variants. The card code supports ratio-based masonry image heights, and heights are clamped in `EventCard` so the feed keeps a controlled masonry rhythm.
+- Cards use generated preview images with ratio-based heights clamped by
+  `EventCard`.
+- Tapping the image or title/date block opens event details.
+- Tapping the bookmark toggles saved state without opening event details.
+- Attendee stacks show at most two friend avatars plus a `+` avatar when there
+  are more than two friends attending.
 
 ### Event Detail
 
-`EventDetailScreen.js` loads by `/event/[id]`, renders generated detail-size event media and social context, supports save/bookmark, lets the user mark participation, logs detail interactions, and triggers haptic feedback.
+`EventDetailScreen.js` loads by `/event/[id]`. It renders generated detail-size
+media, social context, a draggable sheet, bookmark controls, a participation
+action, haptics, and detail interaction logs.
+
+Some supporting content is intentionally prototype-grade, including the static
+map preview and review card copy.
 
 ### Profile
 
-`ProfileScreen.js` builds a cultural-passport view from `profileService.js`. It has:
+`ProfileScreen.js` builds a cultural-passport style view from
+`profileService.js`.
 
-- profile header and stats;
-- list view with experience cards and photo refs;
-- map view with custom experience pins;
-- event detail navigation from both views.
+Current behavior:
+
+- Profile header with username, avatar, and stats.
+- Segmented list/map selector.
+- List of mock attended experiences with image grids.
+- Profile map using custom experience pins.
+- Event detail navigation from both views.
 
 ### Shake To Discover
 
-`ShakeDiscoverScreen.js` and `useShakeToDiscover.js` use the accelerometer to detect shaking, show animated particle feedback, trigger vibration/haptics, activate Discovery Mode, and redirect to `/map/list`.
+`ShakeDiscoverScreen.js` and `useShakeToDiscover.js` use the accelerometer to
+detect shaking, show animated particle feedback, trigger vibration/haptics,
+activate Discovery Mode, and redirect to `/map/list`.
 
-Discovery Mode stores a small ordered set of event IDs in `DiscoveryModeContext`, filters map/list data to that set, and can be dismissed from visible Discover Mode pills. Discovery Mode must not change marker mount behavior; it only changes which events are provided to the map/list screens.
+Discovery Mode stores an ordered set of four event IDs selected by distance from
+the default Lisbon discovery coordinate with a small random tie-breaker. Map and
+list screens filter to that set until the Discover Mode pill is dismissed.
 
-### Placeholder Tabs
+### Placeholder Screens
 
-Messages, Search, Community, and Notifications currently render `PlaceholderScreen` and log screen-open events.
+Messages, Search, Community, and Notifications currently render
+`PlaceholderScreen` and log screen-open events.
 
 ## Data Layer
 
 The prototype uses local mock data, not a backend.
 
-The app is structured around a backend-ready boundary:
+The mock database is normalized into event types, organizers, locations, events,
+event images, users, friendships, saved events, event participations, and user
+event experiences. Services compose these source records into UI-ready view
+models. This keeps UI code stable while matching the shape of a future backend.
 
-- `src/data/mockEvents.js` and `src/data/mockUsers.js` are source mock records.
-- `src/data/local/*Repository.js` owns the local in-memory repository implementations and is the only app layer that should import mock records directly.
-- `src/repositories/*Repository.js` is the replaceable data-access facade. Future API-backed implementations can be swapped in here.
-- `src/services/*Service.js` contains application/use-case functions consumed by screens and components.
-- `src/domain/` contains pure reusable business helpers for event state, discovery ranking, geo distance, and profile aggregation.
+Data flow is intentionally backend-ready:
 
-Screens and components should call services or receive props; they should not import mock data directly.
+- `src/data/mockEvents.js` contains event-domain source records:
+  `mockEventTypes`, `mockOrganizers`, `mockLocations`, `mockEvents`,
+  `mockEventImages`, `mockEventParticipations`, and `mockUserSavedEvents`.
+- `src/data/mockUsers.js` contains user-domain source records:
+  `mockUsers`, `mockFriendships`, and `mockUserEventExperiences`.
+- `src/data/local/*Repository.js` contains the local in-memory repository
+  implementations and is the only app layer that should import mock records
+  directly.
+- `src/repositories/*Repository.js` is the replaceable data-access facade.
+- `src/services/*Service.js` contains application/use-case functions consumed by
+  screens and components.
+- `src/domain/` contains pure helpers for event state, event formatting,
+  discovery ranking, geo distance, and profile aggregation.
 
-Main files:
+Screens and components should call services or receive props. They should not
+import mock records directly.
 
-- `src/data/mockEvents.js`
-- `src/data/mockUsers.js`
-- `src/data/local/localEventRepository.js`
-- `src/data/local/localUserRepository.js`
-- `src/data/local/localProfileRepository.js`
-- `src/repositories/eventRepository.js`
-- `src/repositories/userRepository.js`
-- `src/repositories/profileRepository.js`
-- `src/services/eventService.js`
-- `src/services/userService.js`
-- `src/services/profileService.js`
-- `src/domain/events/eventState.js`
-- `src/domain/events/eventSelectors.js`
-- `src/domain/events/eventFormatters.js`
-- `src/domain/events/geo.js`
-- `src/domain/discovery/discoveryRanking.js`
-- `src/domain/profile/profileAggregates.js`
+Source event records store backend-like fields such as `eventTypeId`,
+`organizerId`, `locationId`, `startsAt`, `endsAt`, structured `price`,
+`maximumCapacity`, lifecycle `status`, and `popularity`. They do not store
+rendering conveniences such as category names, organizer names, location labels,
+coordinates, image keys, friend context, saved state, or joined state.
+
+`eventService.js` composes event view models from normalized records and keeps
+the current UI contract stable. Screens still receive fields such as:
+
+```js
+{
+  id,
+  title,
+  category,
+  description,
+  longDescription,
+  locationName,
+  latitude,
+  longitude,
+  thumbnailKey,
+  organizerName,
+  date,
+  time,
+  startsAt,
+  endsAt,
+  price,
+  maximumCapacity,
+  status,
+  availability,
+  popularity,
+  attendingFriends,
+  friendsGoing,
+  friendsWentBefore,
+  isSaved,
+  isJoined,
+  canJoin,
+}
+```
+
+Events store lifecycle status as `draft`, `published`, or `canceled`.
+Availability is computed as `available`, `sold_out`, `canceled`, or
+`already_happened` from lifecycle status, `endsAt`, active participation count,
+and `maximumCapacity`.
+
+Saved state is represented by `mockUserSavedEvents`. Join state is represented by
+`mockEventParticipations`; active participation means `status === "registered"`.
+`joinEvent(id)` creates a participation relationship when the event is joinable
+and is idempotent if the current user is already registered.
 
 `eventService.js` exposes:
 
@@ -385,49 +487,20 @@ toggleSavedEvent(id);
 getDiscoverEvents(options);
 ```
 
-`localUserRepository.js` manages the current mock user in memory for save/join state. `eventService.js` returns event objects enriched with user-specific state such as `isSaved` and `isJoined` by using pure domain helpers. Interaction logs and logging context are stored in AsyncStorage.
+`profileService.js` composes profile experiences from normalized user event
+experience records, event view models, and friendship records. Profile stats are
+derived from accepted friendships and the current user's explicit experience
+records.
 
-Current event shape:
-
-```js
-{
-  id: "event-001",
-  title: "Cascais Print Salon",
-  category: "Art",
-  description: "Abertura de uma mostra de gravura contemporanea junto a baia.",
-  locationName: "Casa do Farol, Cascais, Lisboa",
-  thumbnailKey: "art_gallery1",
-  organizerName: "Casa do Farol",
-  latitude: 38.6968,
-  longitude: -9.4204,
-  date: "2026-06-05",
-  time: "19:00",
-  price: "Free",
-  popularity: 58,
-  friendsGoing: ["Ana", "Miguel"],
-  friendsWentBefore: ["Rita", "Joao", "Clara"],
-  attendingFriends: [
-    { id: "ana", name: "Ana", avatarKey: "ana" }
-  ],
-  isJoined: false,
-  isSaved: false
-}
-```
-
-`isSaved` is added by `eventService.js` based on current user state.
+Interaction logs and logging context are stored in AsyncStorage.
 
 ## Interaction Logging
 
 Interaction logs live in `src/services/interactionLogService.js`.
 
-The logger records:
-
-- session metadata;
-- route/screen/action;
-- event, task, participant, source, reason, and result metadata;
-- location metadata when available;
-- action categories;
-- elapsed time and sequence number.
+The logger records session metadata, route/screen/action data, event/task/source
+metadata, location metadata when available, action categories, elapsed time, and
+sequence number.
 
 Storage and export support:
 
@@ -446,6 +519,7 @@ logInteraction(action, metadata);
 getInteractionLogs();
 clearInteractionLogs();
 setInteractionContext(context);
+getInteractionContext();
 startInteractionTask(taskId);
 finishInteractionTask(result);
 getInteractionSummary();
@@ -461,21 +535,21 @@ There is currently no dedicated logs/debug screen in the route tree.
 
 ## Design And UX
 
-The app uses a bright green primary color, magenta discovery accent, light surfaces, custom event imagery, avatar stacks, native tabs, and conditional Liquid Glass surfaces on supported iOS devices.
-
-Navigation icons on Liquid Glass surfaces use shared adaptive color helpers from `src/theme/liquidGlass.js`. On iOS they use native dynamic colors so icons can resolve to light or dark values with the glass surface when supported; non-iOS platforms use the app's standard active/muted icon colors.
+The visual system uses a bright green primary color, magenta discovery accent,
+light surfaces, custom event imagery, avatar stacks, native tabs, and conditional
+Liquid Glass surfaces on supported iOS devices.
 
 Design intent:
 
 - map/list exploration first;
-- editorial poster previews for event discovery from the map;
-- image-led two-column masonry browsing in the list view;
+- editorial poster previews for map discovery;
+- image-led two-column browsing in the list view;
 - event-centered social proof;
 - compact mobile-first layouts;
 - large touch targets;
 - high-contrast active states;
 - haptics for meaningful actions;
-- Discover Mode as a visually distinct state.
+- Discovery Mode as a visually distinct state.
 
 ## Development Guidelines
 
@@ -484,22 +558,34 @@ Design intent:
 - Put reusable UI in `src/components`.
 - Put mock data access and local in-memory mutations in `src/data/local`.
 - Keep `src/repositories` as the replaceable data-access boundary.
-- Keep `src/services` as application/use-case facades consumed by screens/components.
+- Keep `src/services` as application/use-case facades consumed by
+  screens/components.
 - Keep reusable business rules in `src/domain`.
 - Do not import mock records directly outside `src/data/local`.
-- Use Expo Router APIs such as `useRouter`, `router.push`, `router.replace`, and `useLocalSearchParams`.
+- Do not make screens/components consume normalized records directly; compose
+  UI-ready models in services/domain helpers.
+- Do not store computed `availability`, `isSaved`, or `isJoined` on source event
+  records.
+- Use Expo Router APIs such as `useRouter`, `router.push`, `router.replace`, and
+  `useLocalSearchParams`.
 - Do not use React Navigation screen props in app screens.
 - Keep interaction logging wired through `interactionLogService`.
-- Keep the map marker layer stable. Do not connect marker rendering to preview open/close state.
-- Let event marker `tracksViewChanges` change only in response to pin image loading.
-- Keep the list screen's masonry structure in `ListScreen.js`; tile-specific visual behavior belongs in `EventCard.js`.
-- Regenerate event image variants with `npm run images:events` after adding or changing source images.
-- Keep the project Expo Go friendly where possible, but do not let that block concrete prototype requirements when an Expo-compatible module or dev build would be justified.
-- Prefer Expo-compatible dependencies. Add new dependencies only when they solve a concrete UX, testing, or implementation need, and document why they were added.
+- Keep the map marker layer stable. Preview open/close state should not drive
+  marker remounting, marker opacity, or marker image refreshes.
+- Regenerate event image variants with `npm run images:events` after adding or
+  changing source event images.
+- Prefer Expo-compatible dependencies. Add new dependencies only when they solve
+  a concrete prototype requirement.
 
 ## Validation
 
-Run static/lint checks:
+For documentation-only changes:
+
+```bash
+git diff --check
+```
+
+For code changes:
 
 ```bash
 git diff --check
@@ -507,7 +593,7 @@ git diff --check
 npm run lint
 ```
 
-Regenerate/check image variants after changing event artwork:
+After changing event artwork:
 
 ```bash
 npm run images:events
@@ -519,78 +605,17 @@ Optional architecture/dependency audit:
 npm run unused
 ```
 
-The current Knip output is expected to include preserved public service exports, backward-compatible image helpers, Liquid Glass helper variants, interaction-log export helpers, and repository switch-point exports that are kept for future backend/debug work.
+Recommended manual smoke test:
 
-Manual smoke test:
+1. Open `/map`, allow or deny location, and confirm the map still renders.
+2. Tap several event pins and confirm previews open, dismiss, and navigate to
+   detail screens.
+3. Open `/map/list`, save/unsave an event, and open an event detail screen.
+4. Use `/map/shake-discover`, shake the device, and confirm Discovery Mode
+   filters the list/map until dismissed.
+5. Open Profile list and map views and confirm experiences navigate to details.
 
-1. Open `/map`.
-2. Allow or deny location and confirm the app still works.
-3. Tap multiple event pins repeatedly.
-4. Confirm the map centers on the tapped event before the preview opens.
-5. Confirm the editorial poster preview opens centered on screen.
-6. Confirm the poster transition image morphs from the pin, then the sharper preview image appears after the last bounce.
-7. Confirm the location-status/recenter control disappears while the poster is open and returns after it collapses.
-8. Confirm event pins do not disappear after opening/closing previews or switching tabs.
-9. Confirm the user-location marker does not disappear after opening/closing previews.
-10. Confirm tapping outside the poster dismisses the preview and removes the blur.
-11. Confirm dragging on the blur/dismiss overlay dismisses the preview.
-12. Confirm the circular poster action button opens event details.
-13. Confirm long poster titles wrap cleanly at word boundaries or manual hyphen breaks, without native-looking one-letter splits or opening-animation flicker.
-14. Confirm long poster addresses can wrap in the footer and do not show postal-code-like fragments.
-15. Open `/map/list` and confirm the event feed renders as two masonry columns.
-16. Confirm list-card image taps open event details.
-17. Confirm list-card date/title taps open event details.
-18. Confirm list-card bookmark taps save/unsave without opening event details.
-19. Confirm list-card attendee stacks never show more than three circles.
-20. Save/unsave from event details.
-21. Mark participation in event details.
-22. Use `/map/shake-discover` and shake the device.
-23. Confirm Discover Mode filters the list/map and can be dismissed.
-24. Confirm Discover Mode does not destabilize map markers.
-25. Open Profile list and map views.
-
-## Academic Delivery Notes
-
-The current implementation supports the prototype evidence needed for the course:
-
-- functional app screens;
-- interaction logs for quantitative analysis;
-- location and accelerometer input;
-- haptic/visual feedback;
-- mock social event data;
-- profile/cultural-passport flow.
-
-Recommended usability tasks:
-
-1. Find an event on the map.
-2. Open an event preview.
-3. Navigate to event details.
-4. Save or unsave an event.
-5. Mark participation in an event.
-6. Find attended experiences in the profile.
-7. Use Shake to Discover.
-
-Useful metrics:
-
-- task completion rate;
-- time to find an event;
-- number of event previews opened;
-- number of event detail pages opened;
-- number of save/join actions;
-- number of shakes detected;
-- number of location permission outcomes;
-- number of navigation actions;
-- error count observed during testing.
-
-## Future Work
-
-- Replace local mock data with a real backend.
-- Add authentication and persistent user profiles.
-- Add organizer accounts and event publishing.
-- Add real messaging and notifications.
-- Add real media uploads.
-- Add a logs/debug export screen.
-- Continue refining the editorial map preview poster motion and layout.
-- Add robust regression testing/checklists around custom map markers and preview interactions.
-- Consider a dev-build/native-marker strategy only if Expo Go limitations become blocking.
-- Add stronger recommendation logic for Discover Mode.
+For course evaluation, the current prototype supports evidence around task
+completion, event preview/detail opens, save/join actions, shake detection,
+location permission outcomes, navigation actions, and exported interaction-log
+data.

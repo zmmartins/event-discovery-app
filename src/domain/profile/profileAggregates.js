@@ -2,19 +2,20 @@ export function clonePhotoRefs(photoRefs = []) {
   return photoRefs.map((photoRef) => ({ ...photoRef }));
 }
 
-export function orderUserExperienceRecords(user, experienceRecords = []) {
-  const experienceIds = user?.attendedExperienceIds ?? [];
-  const experienceMap = new Map(
-    experienceRecords.map((experience) => [experience.id, experience])
-  );
+export function orderUserExperienceRecords(experienceRecords = []) {
+  return [...experienceRecords].sort((firstExperience, secondExperience) => {
+    const firstTime = new Date(firstExperience.attendedAt).getTime();
+    const secondTime = new Date(secondExperience.attendedAt).getTime();
 
-  return experienceIds.map((experienceId) => experienceMap.get(experienceId)).filter(Boolean);
+    return secondTime - firstTime;
+  });
 }
 
-export function createProfileStats(user, experiences = []) {
+export function createProfileStats({ experiences = [], friendships = [] } = {}) {
   return {
     attendedEvents: experiences.length,
-    friends: (user?.friendIds ?? []).length,
+    friends: friendships.filter((friendship) => friendship.status === "accepted")
+      .length,
     uniqueExperiences: new Set(
       experiences.map((experience) => experience.eventId)
     ).size,

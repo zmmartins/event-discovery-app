@@ -1,34 +1,37 @@
-import { CURRENT_USER_ID, mockUsers } from "../mockUsers";
+import {
+  CURRENT_USER_ID,
+  mockFriendships,
+  mockUsers,
+} from "../mockUsers";
 
 // Local mock implementation of the user repository.
-// This is the only layer that should import mockUsers directly.
+// This is the only user-data layer that should import mockUsers directly.
 
-function cloneUser(user) {
-  if (!user) return null;
+function cloneRecord(record) {
+  if (!record) return null;
 
-  return {
-    ...user,
-    attendedExperienceIds: [...(user.attendedExperienceIds ?? [])],
-    friendIds: [...(user.friendIds ?? [])],
-    participatingEventIds: [...(user.participatingEventIds ?? [])],
-    savedEventIds: [...(user.savedEventIds ?? [])],
-  };
+  return JSON.parse(JSON.stringify(record));
 }
 
-let users = mockUsers.map(cloneUser);
+let users = mockUsers.map(cloneRecord);
+let friendships = mockFriendships.map(cloneRecord);
 
 function findCurrentUserRecord() {
   return users.find((user) => user.id === CURRENT_USER_ID);
 }
 
+export async function listUserRecords() {
+  return users.map(cloneRecord);
+}
+
 export async function getCurrentUserRecord() {
-  return cloneUser(findCurrentUserRecord());
+  return cloneRecord(findCurrentUserRecord());
 }
 
 export async function getUserById(id) {
   const user = users.find((nextUser) => nextUser.id === id);
 
-  return cloneUser(user);
+  return cloneRecord(user);
 }
 
 export async function updateCurrentUser(updater) {
@@ -37,50 +40,15 @@ export async function updateCurrentUser(updater) {
   users = users.map((user) => {
     if (user.id !== CURRENT_USER_ID) return user;
 
-    const nextUser = updater(cloneUser(user));
-    updatedUser = cloneUser(nextUser);
+    const nextUser = updater(cloneRecord(user));
+    updatedUser = cloneRecord(nextUser);
 
     return updatedUser;
   });
 
-  return cloneUser(updatedUser);
+  return cloneRecord(updatedUser);
 }
 
-export async function toggleCurrentUserSavedEvent(eventId) {
-  const updatedUser = await updateCurrentUser((currentUser) => {
-    const savedEventIds = currentUser.savedEventIds ?? [];
-    const isSaved = savedEventIds.includes(eventId);
-
-    return {
-      ...currentUser,
-      savedEventIds: isSaved
-        ? savedEventIds.filter((savedEventId) => savedEventId !== eventId)
-        : [...savedEventIds, eventId],
-    };
-  });
-
-  return {
-    isSaved: Boolean(updatedUser?.savedEventIds?.includes(eventId)),
-    user: updatedUser,
-  };
-}
-
-export async function addCurrentUserParticipatingEvent(eventId) {
-  const updatedUser = await updateCurrentUser((currentUser) => {
-    const participatingEventIds = currentUser.participatingEventIds ?? [];
-
-    if (participatingEventIds.includes(eventId)) {
-      return currentUser;
-    }
-
-    return {
-      ...currentUser,
-      participatingEventIds: [...participatingEventIds, eventId],
-    };
-  });
-
-  return {
-    isJoined: true,
-    user: updatedUser,
-  };
+export async function listFriendshipRecords() {
+  return friendships.map(cloneRecord);
 }

@@ -6,12 +6,11 @@ import {
 } from "../domain/profile/profileAggregates";
 import { listUserExperienceRecords } from "../repositories/profileRepository";
 import { getEventById } from "./eventService";
-import { getCurrentUser } from "./userService";
+import { getCurrentUser, getFriendships } from "./userService";
 
 export async function getProfileExperiences() {
   const currentUser = await getCurrentUser();
   const experienceRecords = orderUserExperienceRecords(
-    currentUser,
     await listUserExperienceRecords(currentUser.id)
   );
   const experiences = await Promise.all(
@@ -38,14 +37,24 @@ export async function getProfileMapPins() {
 }
 
 export async function getCurrentUserProfile() {
-  const currentUser = await getCurrentUser();
-  const experiences = await getProfileExperiences();
+  const [currentUser, experiences, friendships] = await Promise.all([
+    getCurrentUser(),
+    getProfileExperiences(),
+    getFriendships(),
+  ]);
+  const currentUserFriendships = friendships.filter(
+    (friendship) =>
+      friendship.userId === currentUser.id || friendship.friendUserId === currentUser.id
+  );
 
   return {
     avatarKey: currentUser.avatarKey,
     id: currentUser.id,
     name: currentUser.name,
-    stats: createProfileStats(currentUser, experiences),
+    stats: createProfileStats({
+      experiences,
+      friendships: currentUserFriendships,
+    }),
     username: currentUser.username ?? currentUser.name,
     experiences,
     mapPins: experiences.map(createProfileMapPin),

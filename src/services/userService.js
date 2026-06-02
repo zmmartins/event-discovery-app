@@ -1,17 +1,17 @@
 import {
-  addCurrentUserParticipatingEvent,
   getCurrentUserRecord,
-  toggleCurrentUserSavedEvent,
+  listFriendshipRecords,
+  listUserRecords,
 } from "../repositories/userRepository";
 
 export async function getCurrentUser() {
   return getCurrentUserRecord();
 }
 
-export async function toggleSavedEvent(eventId) {
-  return toggleCurrentUserSavedEvent(eventId);
+export async function getUsers() {
+  return listUserRecords();
 }
 
-export async function addParticipatingEvent(eventId) {
-  return addCurrentUserParticipatingEvent(eventId);
+export async function getFriendships() {
+  return listFriendshipRecords();
 }
