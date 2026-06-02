@@ -1,7 +1,7 @@
 import { Image, StyleSheet, View } from "react-native";
 
 import { colors } from "../theme/colors";
-import { getEventImage } from "../utils/imageAssets";
+import { getEventPinImage } from "../utils/imageAssets";
 
 const MIN_PIN_SIZE = 42;
 const MAX_PIN_SIZE = 86;
@@ -149,7 +149,7 @@ export default function EventPin({
         <Image
           accessibilityLabel={centerImageAccessibilityLabel ?? `${title} thumbnail`}
           onLoadEnd={onImageLoad}
-          source={centerImageSource ?? getEventImage(thumbnailKey)}
+          source={centerImageSource ?? getEventPinImage(thumbnailKey)}
           style={[
             styles.thumbnail,
             {

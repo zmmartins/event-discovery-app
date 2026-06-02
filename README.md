@@ -12,12 +12,14 @@ Implemented core areas:
 
 - Native tab shell with Explore, Messages, Search, Community, and Profile tabs.
 - Nested Explore stack with map, list, shake-discover, and notifications routes.
-- Map exploration with static event pins, user-location recentering, a transient location-status control, centered editorial poster previews, and event-detail navigation.
+- Map exploration with custom event pins, per-pin image-load handling, user-location recentering, a transient location-status control, centered editorial poster previews, and event-detail navigation.
 - List exploration with a two-column masonry-style event feed, image-led cards, save/bookmark support, and Discover Mode filtering.
 - Event detail screen with a draggable sheet, event media, social context, save/bookmark, participate action, and haptic feedback.
 - Profile screen with list and map views for attended mock experiences.
 - Shake to Discover using the accelerometer, vibration/haptics, animated feedback, and Discover Mode activation.
 - Interaction logging with AsyncStorage persistence and JSON/CSV/bundle export helpers.
+- Generated event image variants for pin, preview/card, and detail contexts.
+- Adaptive Liquid Glass icon colors for iOS navigation surfaces where supported.
 - Placeholder tabs for Messages, Search, Community, and Notifications.
 
 Out of scope for the current academic prototype:
@@ -45,6 +47,7 @@ Out of scope for the current academic prototype:
 - Expo FileSystem and Sharing
 - Expo Glass Effect and native tabs
 - AsyncStorage
+- Sharp for deterministic local image-variant generation
 - Mock local data
 
 ## Run The Project
@@ -67,8 +70,13 @@ Useful scripts:
 npm run ios
 npm run android
 npm run web
+npm run images:events
 npm run lint
 ```
+
+`npm run images:events` regenerates the event image variants from the source images in `src/assets/events`.
+
+The app is native-focused. The `web` script exists because this is an Expo project, but the current route graph imports `react-native-maps`; web export currently fails on a native-only `react-native-maps` import. Use iOS/Android for app validation.
 
 Clear Expo cache:
 
@@ -161,7 +169,10 @@ Event details read the route parameter with `useLocalSearchParams()`.
 ```text
 app/                         File-based Expo Router routes
 src/assets/avatars/          Mock avatar images
-src/assets/events/           Mock event images
+src/assets/events/           Source mock event images
+src/assets/events/pins/      Generated 160x160 pin images
+src/assets/events/previews/  Generated max-900px preview/card images
+src/assets/events/details/   Generated max-1600px detail images
 src/components/              Reusable UI components
 src/context/                 Discovery Mode context
 src/data/                    Mock events and users
@@ -170,6 +181,7 @@ src/screens/                 Screen implementations
 src/services/                Data, logging, location, profile, user services
 src/theme/                   Colors, spacing, map style, glass constants
 src/utils/                   Image asset lookup helpers
+scripts/                     Local maintenance scripts
 ```
 
 Core screens:
@@ -199,6 +211,31 @@ Core components:
 
 ## Feature Details
 
+### Event Image Assets
+
+Source event images live directly under `src/assets/events`. Generated variants live in:
+
+- `src/assets/events/pins`: 160x160 JPG square crops for map marker snapshots.
+- `src/assets/events/previews`: JPG images resized to fit within 900px on the longest side for cards, posters, lists, and profile memories.
+- `src/assets/events/details`: JPG images resized to fit within 1600px on the longest side for event detail hero media.
+
+Regenerate variants with:
+
+```bash
+npm run images:events
+```
+
+The generator is `scripts/generate-event-image-variants.js`. It uses Sharp, accepts `.jpg`, `.jpeg`, `.png`, and `.webp` source files, writes deterministic names such as `art_gallery1_pin.jpg`, and ignores the generated `pins`, `previews`, and `details` folders so variants are not processed again.
+
+Image lookup is centralized in `src/utils/imageAssets.js`:
+
+- `getEventPinImage(key)` for map pins and experience pins.
+- `getEventPreviewImage(key)` for cards, poster previews, list images, and profile memory tiles.
+- `getEventDetailImage(key)` for event detail hero images.
+- `getEventImage(key)` remains as a backward-compatible alias to preview images.
+
+Do not manually edit generated variants. Update the source image, then rerun `npm run images:events`.
+
 ### Map
 
 `MapScreen.js` uses `react-native-maps` with Google provider, the custom map style in `src/theme/mapStyle.js`, event markers, and a custom user-location marker.
@@ -207,11 +244,14 @@ Current marker behavior:
 
 - Event pins are custom React marker children rendered with `EventPin`.
 - Event marker keys remain stable by `event.id`.
-- Event markers use `tracksViewChanges={false}` during normal operation.
+- Event markers keep `tracksViewChanges` enabled only until their pin image finishes loading.
+- `EventPin` reports `onImageLoad`; `MapScreen` waits one animation frame and then freezes that marker by setting `tracksViewChanges={false}`.
+- Loaded pin-image state resets when the focused map fetches/refilters its event set.
 - The marker layer is intentionally static and independent from preview state.
 - Opening or closing a preview must not hide, unmount, rekey, remount, refresh, or opacity-toggle event markers.
 - The selected marker remains mounted and visible underneath the overlay.
 - Event pin layout/size is derived from event data but frozen per JS session through the session layout helper in `EventPin.js`.
+- Event pins use the generated pin image variant through `getEventPinImage`.
 - The expanded preview is a React Native overlay rendered by `MorphingEventPreview`, not a map marker.
 - The map recenters on the selected event before the preview opens.
 - A blur/dismiss overlay appears behind the expanded preview and blocks map interaction while the preview is open.
@@ -220,7 +260,7 @@ Current marker behavior:
 
 Important marker stability rule:
 
-Do not make preview state mutate the marker layer. Preview interactions must not change marker visibility, keys, mount state, `tracksViewChanges`, or marker image-load refresh behavior. This rule exists because custom React children inside `react-native-maps` markers can become unstable if repeatedly refreshed or remounted.
+Do not make preview state mutate the marker layer. Preview interactions must not change marker visibility, keys, mount state, or marker image-load refresh behavior. Event marker `tracksViewChanges` should only be controlled by pin image loading. This rule exists because custom React children inside `react-native-maps` markers can become unstable if repeatedly refreshed or remounted.
 
 The map requests foreground location through `locationService.js`, recenters when possible, and logs permission/location outcomes.
 
@@ -241,6 +281,8 @@ Current behavior:
 - Poster title lines render as one native `Text` element per solved line and do not use native auto-shrinking, which keeps 3-line titles stable during the morph animation.
 - The date/time stack is rotated and aligned with the title row.
 - The footer uses compact editorial/monospace support text, removes postal-code-like address fragments, and allows the address to wrap to two lines.
+- The morphing transition image uses the generated pin image variant.
+- A separate static preview image layer is mounted at the final poster image size from the start, uses `getEventPreviewImage`, and fades in after a short delay so the spring bounce can settle before the sharper image appears.
 - The circular arrow action button opens `/event/[id]`.
 - Close completion is reported back to `MapScreen` so preview state can be cleared after the morph-out animation.
 
@@ -264,11 +306,11 @@ Current list behavior:
 - List-card attendee stacks show at most three circles: one or two friend avatars, then a `+` avatar whenever more than two friends are attending.
 - The old horizontal card layout, address/price text, and `CHECK US OUT` button have been removed from the list feed.
 
-Current asset note: the card code supports ratio-based masonry image heights, and the bundled JPG event thumbnails use varied portrait dimensions. Heights are still clamped in `EventCard` so the feed keeps a controlled masonry rhythm.
+Current asset note: cards use generated preview image variants. The card code supports ratio-based masonry image heights, and heights are clamped in `EventCard` so the feed keeps a controlled masonry rhythm.
 
 ### Event Detail
 
-`EventDetailScreen.js` loads by `/event/[id]`, renders event media and social context, supports save/bookmark, lets the user mark participation, logs detail interactions, and triggers haptic feedback.
+`EventDetailScreen.js` loads by `/event/[id]`, renders generated detail-size event media and social context, supports save/bookmark, lets the user mark participation, logs detail interactions, and triggers haptic feedback.
 
 ### Profile
 
@@ -390,6 +432,8 @@ There is currently no dedicated logs/debug screen in the route tree.
 
 The app uses a bright green primary color, magenta discovery accent, light surfaces, custom event imagery, avatar stacks, native tabs, and conditional Liquid Glass surfaces on supported iOS devices.
 
+Navigation icons on Liquid Glass surfaces use shared adaptive color helpers from `src/theme/liquidGlass.js`. On iOS they use native dynamic colors so icons can resolve to light or dark values with the glass surface when supported; non-iOS platforms use the app's standard active/muted icon colors.
+
 Design intent:
 
 - map/list exploration first;
@@ -412,8 +456,10 @@ Design intent:
 - Use Expo Router APIs such as `useRouter`, `router.push`, `router.replace`, and `useLocalSearchParams`.
 - Do not use React Navigation screen props in app screens.
 - Keep interaction logging wired through `interactionLogService`.
-- Keep the map marker layer static. Do not connect marker rendering to preview open/close state.
+- Keep the map marker layer stable. Do not connect marker rendering to preview open/close state.
+- Let event marker `tracksViewChanges` change only in response to pin image loading.
 - Keep the list screen's masonry structure in `ListScreen.js`; tile-specific visual behavior belongs in `EventCard.js`.
+- Regenerate event image variants with `npm run images:events` after adding or changing source images.
 - Keep the project Expo Go friendly where possible, but do not let that block concrete prototype requirements when an Expo-compatible module or dev build would be justified.
 - Prefer Expo-compatible dependencies. Add new dependencies only when they solve a concrete UX, testing, or implementation need, and document why they were added.
 
@@ -423,7 +469,14 @@ Run static/lint checks:
 
 ```bash
 git diff --check
+./node_modules/.bin/tsc --noEmit
 npm run lint
+```
+
+Regenerate/check image variants after changing event artwork:
+
+```bash
+npm run images:events
 ```
 
 Manual smoke test:
@@ -433,25 +486,26 @@ Manual smoke test:
 3. Tap multiple event pins repeatedly.
 4. Confirm the map centers on the tapped event before the preview opens.
 5. Confirm the editorial poster preview opens centered on screen.
-6. Confirm the location-status/recenter control disappears while the poster is open and returns after it collapses.
-7. Confirm event pins do not disappear after opening/closing previews.
-8. Confirm the user-location marker does not disappear after opening/closing previews.
-9. Confirm tapping outside the poster dismisses the preview and removes the blur.
-10. Confirm dragging on the blur/dismiss overlay dismisses the preview.
-11. Confirm the circular poster action button opens event details.
-12. Confirm long poster titles wrap cleanly at word boundaries or manual hyphen breaks, without native-looking one-letter splits or opening-animation flicker.
-13. Confirm long poster addresses can wrap in the footer and do not show postal-code-like fragments.
-14. Open `/map/list` and confirm the event feed renders as two masonry columns.
-15. Confirm list-card image taps open event details.
-16. Confirm list-card date/title taps open event details.
-17. Confirm list-card bookmark taps save/unsave without opening event details.
-18. Confirm list-card attendee stacks never show more than three circles.
-19. Save/unsave from event details.
-20. Mark participation in event details.
-21. Use `/map/shake-discover` and shake the device.
-22. Confirm Discover Mode filters the list/map and can be dismissed.
-23. Confirm Discover Mode does not destabilize map markers.
-24. Open Profile list and map views.
+6. Confirm the poster transition image morphs from the pin, then the sharper preview image appears after the last bounce.
+7. Confirm the location-status/recenter control disappears while the poster is open and returns after it collapses.
+8. Confirm event pins do not disappear after opening/closing previews or switching tabs.
+9. Confirm the user-location marker does not disappear after opening/closing previews.
+10. Confirm tapping outside the poster dismisses the preview and removes the blur.
+11. Confirm dragging on the blur/dismiss overlay dismisses the preview.
+12. Confirm the circular poster action button opens event details.
+13. Confirm long poster titles wrap cleanly at word boundaries or manual hyphen breaks, without native-looking one-letter splits or opening-animation flicker.
+14. Confirm long poster addresses can wrap in the footer and do not show postal-code-like fragments.
+15. Open `/map/list` and confirm the event feed renders as two masonry columns.
+16. Confirm list-card image taps open event details.
+17. Confirm list-card date/title taps open event details.
+18. Confirm list-card bookmark taps save/unsave without opening event details.
+19. Confirm list-card attendee stacks never show more than three circles.
+20. Save/unsave from event details.
+21. Mark participation in event details.
+22. Use `/map/shake-discover` and shake the device.
+23. Confirm Discover Mode filters the list/map and can be dismissed.
+24. Confirm Discover Mode does not destabilize map markers.
+25. Open Profile list and map views.
 
 ## Academic Delivery Notes
 
@@ -495,7 +549,6 @@ Useful metrics:
 - Add real media uploads.
 - Add a logs/debug export screen.
 - Continue refining the editorial map preview poster motion and layout.
-- Continue adding varied-ratio event artwork to make the masonry feed feel richer.
 - Add robust regression testing/checklists around custom map markers and preview interactions.
 - Consider a dev-build/native-marker strategy only if Expo Go limitations become blocking.
 - Add stronger recommendation logic for Discover Mode.

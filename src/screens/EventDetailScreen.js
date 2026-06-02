@@ -24,7 +24,7 @@ import ScreenStatusBar from "../components/ScreenStatusBar";
 import { getEventById, joinEvent, toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
-import { eventImages } from "../utils/imageAssets";
+import { getEventDetailImage } from "../utils/imageAssets";
 
 const avatarImages = {
   ana: require("../assets/avatars/ana.jpeg"),
@@ -464,7 +464,7 @@ export default function EventDetailScreen() {
     );
   }
 
-  const imageSource = eventImages[event.thumbnailKey] ?? eventImages["art-gallery"];
+  const imageSource = getEventDetailImage(event.thumbnailKey);
   const price = event.price?.toUpperCase?.() ?? "FREE";
   const timeRange = event.time ? `${event.time} - 00:00` : "00:00 - 00:00";
   const statusBarVariant = isSheetExpanded ? "lightBackground" : "image";

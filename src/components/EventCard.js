@@ -7,7 +7,7 @@ import { Animated, Image, Pressable, StyleSheet, Text, View } from "react-native
 import { toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
-import { eventImages } from "../utils/imageAssets";
+import { getEventPreviewImage } from "../utils/imageAssets";
 
 const monthLabels = [
   "JAN",
@@ -106,7 +106,7 @@ export default function EventCard({
     Number.isFinite(resolvedColumnWidth) && resolvedColumnWidth > 0
       ? resolvedColumnWidth
       : 120;
-  const thumbnailSource = eventImages[event.thumbnailKey] ?? eventImages["art-gallery"];
+  const thumbnailSource = getEventPreviewImage(event.thumbnailKey);
   const thumbnailHeight = getThumbnailHeight(thumbnailSource, safeColumnWidth);
   const formattedDate = formatEventDate(event.date);
   const title = String(event.title ?? "").toUpperCase();

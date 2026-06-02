@@ -24,7 +24,7 @@ import {
 import { getCurrentUserProfile } from "../services/profileService";
 import { colors } from "../theme/colors";
 import { APP_MAP_STYLE } from "../theme/mapStyle";
-import { getAvatarImage, getEventImage } from "../utils/imageAssets";
+import { getAvatarImage, getEventPreviewImage } from "../utils/imageAssets";
 
 const DEFAULT_REGION = {
   latitude: 38.7223,
@@ -260,7 +260,7 @@ export default function ProfileScreen() {
                   <Image
                     accessibilityLabel={`${experience.event.title} memory`}
                     key={photoRef.id}
-                    source={getEventImage(photoRef.imageKey)}
+                    source={getEventPreviewImage(photoRef.imageKey)}
                     style={styles.photoTile}
                   />
                 ))}

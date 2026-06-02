@@ -265,6 +265,7 @@ export default function MapScreen() {
   const hasDismissedPreviewByGestureRef = useRef(false);
 
   const [events, setEvents] = useState([]);
+  const [loadedPinImages, setLoadedPinImages] = useState({});
   const [locationStatus, setLocationStatus] = useState(
     sessionLocationStatus === "idle" ? "locating" : sessionLocationStatus
   );
@@ -287,6 +288,21 @@ export default function MapScreen() {
         eventCenterTimeoutRef.current = null;
       }
     };
+  }, []);
+
+  const handlePinImageLoad = useCallback((eventId) => {
+    requestAnimationFrame(() => {
+      setLoadedPinImages((currentLoadedPinImages) => {
+        if (currentLoadedPinImages[eventId]) {
+          return currentLoadedPinImages;
+        }
+
+        return {
+          ...currentLoadedPinImages,
+          [eventId]: true,
+        };
+      });
+    });
   }, []);
 
   const cancelPendingEventPreview = useCallback(() => {
@@ -372,6 +388,7 @@ export default function MapScreen() {
         if (isActive) {
           const filteredEvents = filterDiscoveryEvents(nextEvents);
 
+          setLoadedPinImages({});
           setEvents(filteredEvents);
         }
       });
@@ -767,23 +784,30 @@ export default function MapScreen() {
         style={styles.map}
         toolbarEnabled={false}
       >
-        {events.map((event) => (
-          <Marker
-            anchor={getEventPinMarkerAnchor(event)}
-            coordinate={{
-              latitude: event.latitude,
-              longitude: event.longitude,
-            }}
-            key={event.id}
-            onPress={(markerEvent) => handleMarkerPress(markerEvent, event)}
-            tracksViewChanges={false}
-            zIndex={getEventPinZIndex(event)}
-          >
-            <View collapsable={false}>
-              <EventPin event={event} />
-            </View>
-          </Marker>
-        ))}
+        {events.map((event) => {
+          const hasLoadedPinImage = Boolean(loadedPinImages[event.id]);
+
+          return (
+            <Marker
+              anchor={getEventPinMarkerAnchor(event)}
+              coordinate={{
+                latitude: event.latitude,
+                longitude: event.longitude,
+              }}
+              key={event.id}
+              onPress={(markerEvent) => handleMarkerPress(markerEvent, event)}
+              tracksViewChanges={!hasLoadedPinImage}
+              zIndex={getEventPinZIndex(event)}
+            >
+              <View collapsable={false}>
+                <EventPin
+                  event={event}
+                  onImageLoad={() => handlePinImageLoad(event.id)}
+                />
+              </View>
+            </Marker>
+          );
+        })}
 
         {userLocation && (
           <Marker

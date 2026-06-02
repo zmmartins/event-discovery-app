@@ -10,13 +10,18 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
 
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
-import { getAvatarImage, getEventImage } from "../utils/imageAssets";
+import {
+  getAvatarImage,
+  getEventPinImage,
+  getEventPreviewImage,
+} from "../utils/imageAssets";
 import { getSessionEventPinLayout } from "./EventPin";
 
 const DEFAULT_CARD_HEIGHT = 520;
@@ -63,6 +68,8 @@ const CARD_SURFACE_COLOR = colors.primary;
 const CARD_BORDER_COLOR = colors.primary;
 const IMAGE_BORDER_WIDTH = StyleSheet.hairlineWidth;
 const IMAGE_BORDER_COLOR = colors.primary;
+const FINAL_PREVIEW_IMAGE_DELAY_MS = 420;
+const FINAL_PREVIEW_IMAGE_FADE_MS = 110;
 
 const ACTION_BACKGROUND_COLOR = colors.text;
 const ACTION_TEXT_COLOR = colors.surface;
@@ -505,6 +512,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 ) {
   const pathname = usePathname();
   const progress = useSharedValue(0);
+  const finalPreviewImageOpacity = useSharedValue(0);
   const closeReasonRef = useRef(null);
   const isClosingRef = useRef(false);
 
@@ -542,6 +550,8 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     value: rawTitle,
   });
   const posterTitleLines = posterTitleLayout.lines;
+  const pinImageSource = getEventPinImage(event.thumbnailKey);
+  const previewImageSource = getEventPreviewImage(event.thumbnailKey);
   const titleTypography = {
     fontSize: posterTitleLayout.fontSize,
     lineHeight: posterTitleLayout.lineHeight,
@@ -555,13 +565,21 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
   useEffect(() => {
     isClosingRef.current = false;
+    finalPreviewImageOpacity.value = 0;
     progress.value = 0;
     progress.value = withSpring(1, {
       damping: 18,
       mass: 0.75,
       stiffness: 190,
     });
-  }, [event.id, progress]);
+    finalPreviewImageOpacity.value = withDelay(
+      FINAL_PREVIEW_IMAGE_DELAY_MS,
+      withTiming(1, {
+        duration: FINAL_PREVIEW_IMAGE_FADE_MS,
+        easing: Easing.out(Easing.cubic),
+      })
+    );
+  }, [event.id, finalPreviewImageOpacity, progress]);
 
   const finishClose = useCallback(() => {
     isClosingRef.current = false;
@@ -574,6 +592,10 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
       isClosingRef.current = true;
       closeReasonRef.current = reason;
+      finalPreviewImageOpacity.value = withTiming(0, {
+        duration: 90,
+        easing: Easing.out(Easing.cubic),
+      });
       progress.value = withTiming(
         0,
         {
@@ -587,7 +609,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         }
       );
     },
-    [finishClose, progress]
+    [finalPreviewImageOpacity, finishClose, progress]
   );
 
   useImperativeHandle(
@@ -660,6 +682,10 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     };
   }, [finalImageSize, imageTop, layout.circleOffset, layout.circleSize, posterPadding]);
 
+  const finalPreviewImageStyle = useAnimatedStyle(() => ({
+    opacity: finalPreviewImageOpacity.value,
+  }));
+
   const posterContentStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
       progress.value,
@@ -698,9 +724,30 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
       <Animated.View style={[styles.thumbnailClip, thumbnailClipStyle]}>
         <Animated.Image
-          accessibilityLabel={`${title} thumbnail`}
+          accessibilityLabel={`${title} thumbnail transition`}
           resizeMode="cover"
-          source={getEventImage(event.thumbnailKey)}
+          source={pinImageSource}
+          style={styles.thumbnail}
+        />
+      </Animated.View>
+
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.finalPreviewImageClip,
+          {
+            height: finalImageSize,
+            left: posterPadding,
+            top: imageTop,
+            width: finalImageSize,
+          },
+          finalPreviewImageStyle,
+        ]}
+      >
+        <Image
+          accessibilityLabel={`${title} preview image`}
+          resizeMode="cover"
+          source={previewImageSource}
           style={styles.thumbnail}
         />
       </Animated.View>
@@ -821,9 +868,14 @@ const styles = StyleSheet.create({
     position: "absolute",
     zIndex: 3,
   },
-  imageBorder: {
+  finalPreviewImageClip: {
+    overflow: "hidden",
     position: "absolute",
     zIndex: 4,
+  },
+  imageBorder: {
+    position: "absolute",
+    zIndex: 5,
   },
   thumbnail: {
     height: "100%",
@@ -834,7 +886,7 @@ const styles = StyleSheet.create({
   },
   posterContent: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 5,
+    zIndex: 6,
   },
   posterHeader: {
     position: "absolute",
