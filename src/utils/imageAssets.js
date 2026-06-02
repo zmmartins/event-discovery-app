@@ -1,4 +1,4 @@
-export const avatarImages = {
+const avatarImages = {
   ana: require("../assets/avatars/ana.jpeg"),
   clara: require("../assets/avatars/clara.jpeg"),
   ines: require("../assets/avatars/ines.jpeg"),
@@ -13,7 +13,7 @@ export const avatarImages = {
 // - detail: larger images for event detail screens
 //
 // `getEventImage` is kept as a backward-compatible alias to preview images.
-export const eventPinImages = {
+const eventPinImages = {
   "art-gallery": require("../assets/events/pins/art_gallery1_pin.jpg"),
   "film-night": require("../assets/events/pins/concert_pin.jpg"),
   "rooftop-jazz": require("../assets/events/pins/sunset1_pin.jpg"),
@@ -35,7 +35,7 @@ export const eventPinImages = {
   sunset2: require("../assets/events/pins/sunset2_pin.jpg"),
 };
 
-export const eventPreviewImages = {
+const eventPreviewImages = {
   "art-gallery": require("../assets/events/previews/art_gallery1_preview.jpg"),
   "film-night": require("../assets/events/previews/concert_preview.jpg"),
   "rooftop-jazz": require("../assets/events/previews/sunset1_preview.jpg"),
@@ -57,7 +57,7 @@ export const eventPreviewImages = {
   sunset2: require("../assets/events/previews/sunset2_preview.jpg"),
 };
 
-export const eventDetailImages = {
+const eventDetailImages = {
   "art-gallery": require("../assets/events/details/art_gallery1_detail.jpg"),
   "film-night": require("../assets/events/details/concert_detail.jpg"),
   "rooftop-jazz": require("../assets/events/details/sunset1_detail.jpg"),

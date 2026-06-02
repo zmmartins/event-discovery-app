@@ -21,19 +21,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ScreenStatusBar from "../components/ScreenStatusBar";
+import { formatShortEventDate } from "../domain/events/eventFormatters";
 import { getEventById, joinEvent, toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
-import { getEventDetailImage } from "../utils/imageAssets";
-
-const avatarImages = {
-  ana: require("../assets/avatars/ana.jpeg"),
-  clara: require("../assets/avatars/clara.jpeg"),
-  ines: require("../assets/avatars/ines.jpeg"),
-  joao: require("../assets/avatars/joao.jpeg"),
-  miguel: require("../assets/avatars/miguel.jpeg"),
-  rita: require("../assets/avatars/rita.jpeg"),
-};
+import { getAvatarImage, getEventDetailImage } from "../utils/imageAssets";
 
 const friendAvatarKeys = {
   Ana: "ana",
@@ -66,15 +58,6 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function formatDate(date) {
-  if (!date) return "00/00/00";
-
-  const [year, month, day] = date.split("-");
-  if (!year || !month || !day) return date;
-
-  return `${day}/${month}/${year.slice(2)}`;
-}
-
 function Tag({ children }) {
   return (
     <View style={styles.tag}>
@@ -86,7 +69,7 @@ function Tag({ children }) {
 function Avatar({ avatarKey, size = 34, style }) {
   return (
     <Image
-      source={avatarImages[avatarKey] ?? avatarImages.ana}
+      source={getAvatarImage(avatarKey)}
       style={[
         styles.avatar,
         {
@@ -538,7 +521,7 @@ export default function EventDetailScreen() {
             </View>
 
             <View style={styles.tagsRow}>
-              <Tag>{formatDate(event.date)}</Tag>
+              <Tag>{formatShortEventDate(event.date)}</Tag>
               <Tag>{timeRange}</Tag>
               <Tag>{event.category?.toUpperCase?.() ?? "EVENT"}</Tag>
             </View>

@@ -1,74 +1,50 @@
-import { mockEvents } from "../data/mockEvents";
+import { rankEventsByDiscoveryDistance } from "../domain/discovery/discoveryRanking";
+import { DEFAULT_DISCOVER_COORDINATE } from "../domain/events/geo";
+import { filterEventsByCategory } from "../domain/events/eventSelectors";
+import {
+  decorateEventForUser,
+  decorateEventsForUser,
+} from "../domain/events/eventState";
+import {
+  getEvent,
+  listEvents,
+  patchEvent,
+} from "../repositories/eventRepository";
 import {
   addParticipatingEvent,
   getCurrentUser,
   toggleSavedEvent as toggleUserSavedEvent,
 } from "./userService";
 
-export const DEFAULT_DISCOVER_COORDINATE = {
-  latitude: 38.7223,
-  longitude: -9.1393,
-};
-
-let events = [...mockEvents];
-
-function getDistanceInKm(firstCoordinate, secondCoordinate) {
-  const earthRadiusKm = 6371;
-  const latitudeDelta =
-    ((secondCoordinate.latitude - firstCoordinate.latitude) * Math.PI) / 180;
-  const longitudeDelta =
-    ((secondCoordinate.longitude - firstCoordinate.longitude) * Math.PI) / 180;
-  const firstLatitude = (firstCoordinate.latitude * Math.PI) / 180;
-  const secondLatitude = (secondCoordinate.latitude * Math.PI) / 180;
-  const haversine =
-    Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
-    Math.cos(firstLatitude) *
-      Math.cos(secondLatitude) *
-      Math.sin(longitudeDelta / 2) *
-      Math.sin(longitudeDelta / 2);
-
-  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-}
-
-function decorateEvent(event, user) {
-  if (!event) return event;
-
-  return {
-    ...event,
-    isJoined: Boolean(event.isJoined) || user.participatingEventIds.includes(event.id),
-    isSaved: user.savedEventIds.includes(event.id),
-  };
-}
+export { DEFAULT_DISCOVER_COORDINATE };
 
 export async function getEvents() {
-  const currentUser = await getCurrentUser();
+  const [currentUser, events] = await Promise.all([
+    getCurrentUser(),
+    listEvents(),
+  ]);
 
-  return events.map((event) => decorateEvent(event, currentUser));
+  return decorateEventsForUser(events, currentUser);
 }
 
 export async function getEventById(id) {
-  const currentUser = await getCurrentUser();
-  const event = events.find((nextEvent) => nextEvent.id === id);
+  const [currentUser, event] = await Promise.all([
+    getCurrentUser(),
+    getEvent(id),
+  ]);
 
-  return decorateEvent(event, currentUser);
+  return decorateEventForUser(event, currentUser);
 }
 
 export async function getEventsByCategory(category) {
   const decoratedEvents = await getEvents();
 
-  if (!category || category === "All") {
-    return decoratedEvents;
-  }
-
-  return decoratedEvents.filter((event) => event.category === category);
+  return filterEventsByCategory(decoratedEvents, category);
 }
 
 export async function joinEvent(id) {
   await addParticipatingEvent(id);
-
-  events = events.map((event) =>
-    event.id === id ? { ...event, isJoined: true } : event
-  );
+  await patchEvent(id, { isJoined: true });
 
   return getEventById(id);
 }
@@ -87,17 +63,5 @@ export async function getDiscoverEvents({
   const decoratedEvents = await getEvents();
   const origin = { latitude, longitude };
 
-  return [...decoratedEvents]
-    .map((event) => ({
-      event,
-      ranking:
-        getDistanceInKm(origin, {
-          latitude: event.latitude,
-          longitude: event.longitude,
-        }) +
-        Math.random() * 0.35,
-    }))
-    .sort((firstEvent, secondEvent) => firstEvent.ranking - secondEvent.ranking)
-    .slice(0, limit)
-    .map(({ event }) => event);
+  return rankEventsByDiscoveryDistance(decoratedEvents, origin).slice(0, limit);
 }

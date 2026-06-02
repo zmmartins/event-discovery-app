@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 
+import { formatAttendedExperienceDate } from "../domain/events/eventFormatters";
 import { toggleSavedEvent } from "../services/eventService";
 import {
   LOG_ACTIONS,
@@ -18,29 +19,6 @@ import {
 } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 import { getAvatarImage } from "../utils/imageAssets";
-
-const monthLabels = [
-  "JAN",
-  "FEB",
-  "MAR",
-  "APR",
-  "MAY",
-  "JUN",
-  "JUL",
-  "AUG",
-  "SEP",
-  "OCT",
-  "NOV",
-  "DEC",
-];
-
-function formatAttendedDate(value) {
-  const date = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) return "PAST EXPERIENCE";
-
-  return `${monthLabels[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
-}
 
 function AttendeeStack({ attendees }) {
   const safeAttendees = Array.isArray(attendees) ? attendees : [];
@@ -148,7 +126,9 @@ export default function ProfileExperienceCard({
           <Text numberOfLines={2} style={styles.title}>
             {event.title}
           </Text>
-          <Text style={styles.date}>{formatAttendedDate(experience.attendedAt)}</Text>
+          <Text style={styles.date}>
+            {formatAttendedExperienceDate(experience.attendedAt)}
+          </Text>
         </View>
 
         <Pressable

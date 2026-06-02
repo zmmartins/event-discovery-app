@@ -6,7 +6,7 @@ The app is a social local event discovery prototype for exploring nearby cultura
 
 ## Current State
 
-The project is implemented with **Expo 54**, **React Native 0.81**, **React 19**, and **Expo Router 6**. The routing layer lives in `app/`; the actual screens, services, components, data, and theme files live in `src/`.
+The project is implemented with **Expo 54**, **React Native 0.81**, **React 19**, and **Expo Router 6**. The routing layer lives in `app/`; screen implementations, components, services, repositories, local data adapters, domain helpers, utilities, and theme files live in `src/`.
 
 Implemented core areas:
 
@@ -46,8 +46,10 @@ Out of scope for the current academic prototype:
 - React Native Reanimated
 - Expo FileSystem and Sharing
 - Expo Glass Effect and native tabs
+- Expo Updates
 - AsyncStorage
 - Sharp for deterministic local image-variant generation
+- Knip for unused-code/dependency checks
 - Mock local data
 
 ## Run The Project
@@ -72,9 +74,12 @@ npm run android
 npm run web
 npm run images:events
 npm run lint
+npm run unused
 ```
 
 `npm run images:events` regenerates the event image variants from the source images in `src/assets/events`.
+
+`npm run unused` runs Knip using `knip.json`. The configuration treats `app/`, app config files, and scripts as entry points, scans `src/`, `app/`, and `scripts/`, and ignores generated/static assets under `src/assets`. At the moment, Knip reports several intentionally preserved compatibility exports in services/repositories/theme/image helpers, so treat it as an audit tool rather than a required green check.
 
 The app is native-focused. The `web` script exists because this is an Expo project, but the current route graph imports `react-native-maps`; web export currently fails on a native-only `react-native-maps` import. Use iOS/Android for app validation.
 
@@ -175,13 +180,17 @@ src/assets/events/previews/  Generated max-900px preview/card images
 src/assets/events/details/   Generated max-1600px detail images
 src/components/              Reusable UI components
 src/context/                 Discovery Mode context
-src/data/                    Mock events and users
+src/data/                    Mock source records and local data adapters
+src/data/local/              Local repository implementations backed by mock data
+src/domain/                  Pure event, discovery, and profile domain helpers
 src/hooks/                   Interaction and sensor hooks
+src/repositories/            Replaceable data-access facades
 src/screens/                 Screen implementations
 src/services/                Data, logging, location, profile, user services
-src/theme/                   Colors, spacing, map style, glass constants
+src/theme/                   Colors, map style, Liquid Glass helpers
 src/utils/                   Image asset lookup helpers
 scripts/                     Local maintenance scripts
+knip.json                    Unused-code/dependency check configuration
 ```
 
 Core screens:
@@ -335,13 +344,35 @@ Messages, Search, Community, and Notifications currently render `PlaceholderScre
 
 The prototype uses local mock data, not a backend.
 
+The app is structured around a backend-ready boundary:
+
+- `src/data/mockEvents.js` and `src/data/mockUsers.js` are source mock records.
+- `src/data/local/*Repository.js` owns the local in-memory repository implementations and is the only app layer that should import mock records directly.
+- `src/repositories/*Repository.js` is the replaceable data-access facade. Future API-backed implementations can be swapped in here.
+- `src/services/*Service.js` contains application/use-case functions consumed by screens and components.
+- `src/domain/` contains pure reusable business helpers for event state, discovery ranking, geo distance, and profile aggregation.
+
+Screens and components should call services or receive props; they should not import mock data directly.
+
 Main files:
 
 - `src/data/mockEvents.js`
 - `src/data/mockUsers.js`
+- `src/data/local/localEventRepository.js`
+- `src/data/local/localUserRepository.js`
+- `src/data/local/localProfileRepository.js`
+- `src/repositories/eventRepository.js`
+- `src/repositories/userRepository.js`
+- `src/repositories/profileRepository.js`
 - `src/services/eventService.js`
 - `src/services/userService.js`
 - `src/services/profileService.js`
+- `src/domain/events/eventState.js`
+- `src/domain/events/eventSelectors.js`
+- `src/domain/events/eventFormatters.js`
+- `src/domain/events/geo.js`
+- `src/domain/discovery/discoveryRanking.js`
+- `src/domain/profile/profileAggregates.js`
 
 `eventService.js` exposes:
 
@@ -354,7 +385,7 @@ toggleSavedEvent(id);
 getDiscoverEvents(options);
 ```
 
-`userService.js` manages the current mock user in memory for save/join state. `eventService.js` returns event objects enriched with user-specific state such as `isSaved` and `isJoined`. Interaction logs and logging context are stored in AsyncStorage.
+`localUserRepository.js` manages the current mock user in memory for save/join state. `eventService.js` returns event objects enriched with user-specific state such as `isSaved` and `isJoined` by using pure domain helpers. Interaction logs and logging context are stored in AsyncStorage.
 
 Current event shape:
 
@@ -451,8 +482,11 @@ Design intent:
 - Keep `app/` route files thin.
 - Put screen implementations in `src/screens`.
 - Put reusable UI in `src/components`.
-- Put mock data access and mutations in `src/services`.
-- Do not import `mockEvents` directly into screens.
+- Put mock data access and local in-memory mutations in `src/data/local`.
+- Keep `src/repositories` as the replaceable data-access boundary.
+- Keep `src/services` as application/use-case facades consumed by screens/components.
+- Keep reusable business rules in `src/domain`.
+- Do not import mock records directly outside `src/data/local`.
 - Use Expo Router APIs such as `useRouter`, `router.push`, `router.replace`, and `useLocalSearchParams`.
 - Do not use React Navigation screen props in app screens.
 - Keep interaction logging wired through `interactionLogService`.
@@ -478,6 +512,14 @@ Regenerate/check image variants after changing event artwork:
 ```bash
 npm run images:events
 ```
+
+Optional architecture/dependency audit:
+
+```bash
+npm run unused
+```
+
+The current Knip output is expected to include preserved public service exports, backward-compatible image helpers, Liquid Glass helper variants, interaction-log export helpers, and repository switch-point exports that are kept for future backend/debug work.
 
 Manual smoke test:
 

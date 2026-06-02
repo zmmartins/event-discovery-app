@@ -1,56 +1,19 @@
-import { mockUserExperiences } from "../data/mockUsers";
+import {
+  clonePhotoRefs,
+  createProfileMapPin,
+  createProfileStats,
+  orderUserExperienceRecords,
+} from "../domain/profile/profileAggregates";
+import { listUserExperienceRecords } from "../repositories/profileRepository";
 import { getEventById } from "./eventService";
 import { getCurrentUser } from "./userService";
 
-function clonePhotoRefs(photoRefs = []) {
-  return photoRefs.map((photoRef) => ({ ...photoRef }));
-}
-
-function getPreferredExperienceRecords(user) {
-  const experienceIds = user.attendedExperienceIds ?? [];
-
-  return experienceIds
-    .map((experienceId) =>
-      mockUserExperiences.find(
-        (experience) =>
-          experience.id === experienceId && experience.userId === user.id,
-      ),
-    )
-    .filter(Boolean);
-}
-
-function getRandomPhotoRef(photoRefs = []) {
-  if (photoRefs.length === 0) return null;
-
-  return photoRefs[Math.floor(Math.random() * photoRefs.length)];
-}
-
-function createStats(user, experiences) {
-  return {
-    attendedEvents: experiences.length,
-    friends: (user.friendIds ?? []).length,
-    uniqueExperiences: new Set(
-      experiences.map((experience) => experience.eventId),
-    ).size,
-  };
-}
-
-function createMapPin(experience) {
-  return {
-    event: experience.event,
-    eventId: experience.event.id,
-    experienceId: experience.id,
-    id: `pin-${experience.id}`,
-    latitude: experience.event.latitude,
-    longitude: experience.event.longitude,
-    photoRef: getRandomPhotoRef(experience.photoRefs),
-    title: experience.event.title,
-  };
-}
-
 export async function getProfileExperiences() {
   const currentUser = await getCurrentUser();
-  const experienceRecords = getPreferredExperienceRecords(currentUser);
+  const experienceRecords = orderUserExperienceRecords(
+    currentUser,
+    await listUserExperienceRecords(currentUser.id)
+  );
   const experiences = await Promise.all(
     experienceRecords.map(async (experience) => {
       const event = await getEventById(experience.eventId);
@@ -62,7 +25,7 @@ export async function getProfileExperiences() {
         event,
         photoRefs: clonePhotoRefs(experience.photoRefs),
       };
-    }),
+    })
   );
 
   return experiences.filter(Boolean);
@@ -71,7 +34,7 @@ export async function getProfileExperiences() {
 export async function getProfileMapPins() {
   const experiences = await getProfileExperiences();
 
-  return experiences.map(createMapPin);
+  return experiences.map(createProfileMapPin);
 }
 
 export async function getCurrentUserProfile() {
@@ -82,9 +45,9 @@ export async function getCurrentUserProfile() {
     avatarKey: currentUser.avatarKey,
     id: currentUser.id,
     name: currentUser.name,
-    stats: createStats(currentUser, experiences),
+    stats: createProfileStats(currentUser, experiences),
     username: currentUser.username ?? currentUser.name,
     experiences,
-    mapPins: experiences.map(createMapPin),
+    mapPins: experiences.map(createProfileMapPin),
   };
 }

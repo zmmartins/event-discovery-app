@@ -4,45 +4,14 @@ import { usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { formatEventCardDate } from "../domain/events/eventFormatters";
 import { toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
-import { getEventPreviewImage } from "../utils/imageAssets";
-
-const monthLabels = [
-  "JAN",
-  "FEB",
-  "MAR",
-  "APR",
-  "MAY",
-  "JUN",
-  "JUL",
-  "AUG",
-  "SEP",
-  "OCT",
-  "NOV",
-  "DEC",
-];
-
-const avatarImages = {
-  ana: require("../assets/avatars/ana.jpeg"),
-  clara: require("../assets/avatars/clara.jpeg"),
-  ines: require("../assets/avatars/ines.jpeg"),
-  joao: require("../assets/avatars/joao.jpeg"),
-  miguel: require("../assets/avatars/miguel.jpeg"),
-  rita: require("../assets/avatars/rita.jpeg"),
-};
+import { getAvatarImage, getEventPreviewImage } from "../utils/imageAssets";
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
-}
-
-function formatEventDate(value) {
-  const date = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) return "DATE TBA -";
-
-  return `${monthLabels[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()} -`;
 }
 
 function getThumbnailHeight(source, columnWidth) {
@@ -76,7 +45,7 @@ function VerticalAttendeeStack({ attendees }) {
         <Image
           accessibilityLabel={friend.name}
           key={friend.id}
-          source={avatarImages[friend.avatarKey] ?? avatarImages.ana}
+          source={getAvatarImage(friend.avatarKey)}
           style={[styles.avatar, index > 0 && styles.avatarOverlap]}
         />
       ))}
@@ -108,7 +77,7 @@ export default function EventCard({
       : 120;
   const thumbnailSource = getEventPreviewImage(event.thumbnailKey);
   const thumbnailHeight = getThumbnailHeight(thumbnailSource, safeColumnWidth);
-  const formattedDate = formatEventDate(event.date);
+  const formattedDate = formatEventCardDate(event.date);
   const title = String(event.title ?? "").toUpperCase();
 
   useEffect(() => {
