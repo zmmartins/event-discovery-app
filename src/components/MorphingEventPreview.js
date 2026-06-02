@@ -36,6 +36,16 @@ const POSTER_TITLE_FONT_SIZE = 31;
 const POSTER_TITLE_LINE_HEIGHT = 31;
 const POSTER_TITLE_ROW_HEIGHT = 104;
 const POSTER_TITLE_MAX_LINES = 3;
+const POSTER_TITLE_MAX_FONT_SIZE = 42;
+const POSTER_TITLE_MIN_FONT_SIZE = 20;
+const POSTER_TITLE_LINE_HEIGHT_RATIO = 0.96;
+const POSTER_TITLE_FONT_SIZE_PRECISION = 0.5;
+const POSTER_TITLE_BALANCE_WEIGHT = 1.4;
+const POSTER_TITLE_FILL_WEIGHT = 2.2;
+const POSTER_TITLE_HEIGHT_FILL_WEIGHT = 1.6;
+const POSTER_TITLE_FONT_SIZE_WEIGHT = 3.5;
+const POSTER_TITLE_TINY_LINE_PENALTY = 4;
+const POSTER_TITLE_HYPHEN_PENALTY = 0.9;
 const POSTER_DATE_SLOT_WIDTH = 58;
 const POSTER_TITLE_RIGHT_PADDING = 8;
 const POSTER_TITLE_MIN_WORD_CHARS = 3;
@@ -113,24 +123,54 @@ function getPosterDateParts(event) {
 function getUppercaseCharacterWidthRatio(character) {
   if (character === " ") return 0.34;
   if (character === "-") return 0.38;
-  if ("IL1".includes(character)) return 0.34;
+  if ("IJL1".includes(character)) return 0.34;
   if ("MW".includes(character)) return 0.94;
   if ("ABCDEFGHKNOPQRSTUVXYZ".includes(character)) return 0.74;
 
   return 0.68;
 }
 
-function estimatePosterTextWidth(value, fontSize) {
+function estimatePosterTextUnits(value) {
   return String(value ?? "")
     .split("")
-    .reduce(
-      (width, character) => width + getUppercaseCharacterWidthRatio(character) * fontSize,
-      0
-    );
+    .reduce((width, character) => width + getUppercaseCharacterWidthRatio(character), 0);
+}
+
+function estimatePosterTextWidth(value, fontSize) {
+  return estimatePosterTextUnits(value) * fontSize;
 }
 
 function doesPosterTextFit(value, maxWidth, fontSize) {
   return estimatePosterTextWidth(value, fontSize) <= maxWidth;
+}
+
+function roundPosterFontSize(value) {
+  return (
+    Math.floor(value / POSTER_TITLE_FONT_SIZE_PRECISION) *
+    POSTER_TITLE_FONT_SIZE_PRECISION
+  );
+}
+
+function getMaxFontSizeForPosterLines({ lines, maxWidth, maxHeight }) {
+  if (!Array.isArray(lines) || lines.length === 0) {
+    return 0;
+  }
+
+  const widestLineUnits = Math.max(...lines.map((line) => estimatePosterTextUnits(line)));
+
+  if (!Number.isFinite(widestLineUnits) || widestLineUnits <= 0) {
+    return 0;
+  }
+
+  const maxFontByWidth = maxWidth / widestLineUnits;
+  const maxFontByHeight = maxHeight / (lines.length * POSTER_TITLE_LINE_HEIGHT_RATIO);
+  const rawFontSize = Math.min(
+    POSTER_TITLE_MAX_FONT_SIZE,
+    maxFontByWidth,
+    maxFontByHeight
+  );
+
+  return roundPosterFontSize(rawFontSize);
 }
 
 function splitLongPosterWordByWidth(word, maxWidth, fontSize) {
@@ -182,24 +222,134 @@ function splitLongPosterWordByWidth(word, maxWidth, fontSize) {
   return parts;
 }
 
-function buildPosterTitleLines(words, maxLines, maxWidth, fontSize) {
+function getPosterTitleWords(value) {
+  return String(value ?? "")
+    .toUpperCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function getWordLineCandidates(words, maxLines) {
+  const candidates = [];
+
+  function search(startIndex, currentLines) {
+    if (startIndex >= words.length) {
+      candidates.push(currentLines);
+      return;
+    }
+
+    if (currentLines.length >= maxLines) {
+      return;
+    }
+
+    let line = "";
+
+    for (let endIndex = startIndex; endIndex < words.length; endIndex += 1) {
+      line = line ? `${line} ${words[endIndex]}` : words[endIndex];
+      search(endIndex + 1, [...currentLines, line]);
+    }
+  }
+
+  search(0, []);
+
+  return candidates;
+}
+
+function scorePosterTitleLayout({ lines, fontSize, maxWidth, maxHeight }) {
+  const lineWidths = lines.map((line) => estimatePosterTextUnits(line) * fontSize);
+  const widestLineWidth = Math.max(...lineWidths, 0);
+  const narrowestLineWidth = Math.min(...lineWidths, 0);
+  const averageLineWidth =
+    lineWidths.reduce((sum, width) => sum + width, 0) / Math.max(lineWidths.length, 1);
+  const usedHeight = lines.length * fontSize * POSTER_TITLE_LINE_HEIGHT_RATIO;
+  const widthFill = widestLineWidth / maxWidth;
+  const averageWidthFill = averageLineWidth / maxWidth;
+  const heightFill = usedHeight / maxHeight;
+  const balancePenalty =
+    lines.length > 1 ? (widestLineWidth - narrowestLineWidth) / maxWidth : 0;
+  const hasTinyLine = lines.some((line) => line.replace(/[-\s]/g, "").length <= 2);
+  const hasHyphenatedLine = lines.some((line) => line.endsWith("-"));
+
+  return (
+    fontSize * POSTER_TITLE_FONT_SIZE_WEIGHT +
+    averageWidthFill * POSTER_TITLE_FILL_WEIGHT +
+    widthFill +
+    heightFill * POSTER_TITLE_HEIGHT_FILL_WEIGHT -
+    balancePenalty * POSTER_TITLE_BALANCE_WEIGHT -
+    (hasTinyLine ? POSTER_TITLE_TINY_LINE_PENALTY : 0) -
+    (hasHyphenatedLine ? POSTER_TITLE_HYPHEN_PENALTY : 0)
+  );
+}
+
+function getBestNormalPosterTitleLayout({
+  value,
+  maxWidth,
+  maxHeight,
+  maxLines = POSTER_TITLE_MAX_LINES,
+}) {
+  const words = getPosterTitleWords(value);
+
+  if (words.length === 0) {
+    return null;
+  }
+
+  const candidates = getWordLineCandidates(words, maxLines);
+  let bestLayout = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  candidates.forEach((lines) => {
+    const fontSize = getMaxFontSizeForPosterLines({
+      lines,
+      maxHeight,
+      maxWidth,
+    });
+
+    if (fontSize < POSTER_TITLE_MIN_FONT_SIZE) {
+      return;
+    }
+
+    const score = scorePosterTitleLayout({
+      fontSize,
+      lines,
+      maxHeight,
+      maxWidth,
+    });
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestLayout = {
+        fontSize,
+        lineHeight:
+          fontSize === POSTER_TITLE_FONT_SIZE
+            ? POSTER_TITLE_LINE_HEIGHT
+            : Math.round(fontSize * POSTER_TITLE_LINE_HEIGHT_RATIO),
+        lines,
+      };
+    }
+  });
+
+  return bestLayout;
+}
+
+function buildHyphenatedPosterTitleLines({ value, maxLines, maxWidth, fontSize }) {
+  const words = getPosterTitleWords(value);
   const lines = [];
-  let hasOverflow = false;
 
   function pushLine(line) {
-    if (!line) return true;
+    if (!line) return;
 
     if (lines.length < maxLines) {
       lines.push(line);
-      return true;
+      return;
     }
 
     const lastIndex = maxLines - 1;
     const candidateLine = `${lines[lastIndex]} ${line}`.trim();
-    lines[lastIndex] = candidateLine;
-    hasOverflow = true;
 
-    return doesPosterTextFit(candidateLine, maxWidth, fontSize);
+    if (doesPosterTextFit(candidateLine, maxWidth, fontSize)) {
+      lines[lastIndex] = candidateLine;
+    }
   }
 
   words.forEach((word) => {
@@ -224,80 +374,81 @@ function buildPosterTitleLines(words, maxLines, maxWidth, fontSize) {
     });
   });
 
+  return lines.slice(0, maxLines);
+}
+
+function getBestHyphenatedPosterTitleLayout({
+  value,
+  maxWidth,
+  maxHeight,
+  maxLines = POSTER_TITLE_MAX_LINES,
+}) {
+  const fontSize = POSTER_TITLE_MIN_FONT_SIZE;
+  const lines = buildHyphenatedPosterTitleLines({
+    fontSize,
+    maxLines,
+    maxWidth,
+    value,
+  });
+
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const maxCalculatedFontSize = getMaxFontSizeForPosterLines({
+    lines,
+    maxHeight,
+    maxWidth,
+  });
+
+  const finalFontSize = Math.max(
+    POSTER_TITLE_MIN_FONT_SIZE,
+    Math.min(maxCalculatedFontSize, POSTER_TITLE_MAX_FONT_SIZE)
+  );
+
   return {
-    hasOverflow,
-    lines: lines.slice(0, maxLines),
+    fontSize: finalFontSize,
+    lineHeight: Math.round(finalFontSize * POSTER_TITLE_LINE_HEIGHT_RATIO),
+    lines,
   };
 }
 
-function formatPosterTitleLines({
+function getBestPosterTitleLayout({
   value,
-  maxLines = POSTER_TITLE_MAX_LINES,
   maxWidth,
-  preferredFontSize = POSTER_TITLE_FONT_SIZE,
+  maxHeight,
+  maxLines = POSTER_TITLE_MAX_LINES,
 }) {
-  const words = String(value ?? "")
-    .toUpperCase()
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const safeMaxWidth = Math.max(maxWidth || 0, POSTER_TITLE_MIN_FONT_SIZE * 4);
+  const safeMaxHeight = Math.max(maxHeight || 0, POSTER_TITLE_MIN_FONT_SIZE);
+  const normalLayout = getBestNormalPosterTitleLayout({
+    maxHeight: safeMaxHeight,
+    maxLines,
+    maxWidth: safeMaxWidth,
+    value,
+  });
 
-  if (words.length === 0) return [];
-
-  const safeMaxWidth = Math.max(maxWidth || 0, preferredFontSize * 4);
-  const fontSizeCandidates = [preferredFontSize, 30, 27, 24].filter(
-    (fontSize, index, fontSizes) => fontSizes.indexOf(fontSize) === index
-  );
-  let bestValidTitleLines = null;
-  let fallbackTitleLines = [];
-
-  for (const fontSize of fontSizeCandidates) {
-    const result = buildPosterTitleLines(words, maxLines, safeMaxWidth, fontSize);
-    fallbackTitleLines = result.lines;
-
-    const allLinesFit = result.lines.every((line) =>
-      doesPosterTextFit(line, safeMaxWidth, fontSize)
-    );
-
-    if (!result.hasOverflow && allLinesFit) {
-      const hasHyphenatedLine = result.lines.some((line) => line.endsWith("-"));
-
-      if (!hasHyphenatedLine) {
-        return result.lines;
-      }
-
-      bestValidTitleLines = bestValidTitleLines ?? result.lines;
-    }
+  if (normalLayout) {
+    return normalLayout;
   }
 
-  return bestValidTitleLines ?? fallbackTitleLines;
-}
+  const hyphenatedLayout = getBestHyphenatedPosterTitleLayout({
+    maxHeight: safeMaxHeight,
+    maxLines,
+    maxWidth: safeMaxWidth,
+    value,
+  });
 
-function getPosterTitleTypography(titleLines, maxWidth) {
-  const lines = Array.isArray(titleLines) ? titleLines : [];
-  const safeMaxWidth = Math.max(maxWidth || 0, POSTER_TITLE_FONT_SIZE * 4);
-  const hasHyphenatedLine = lines.some((line) => line.endsWith("-"));
-
-  if (hasHyphenatedLine || lines.length >= 3) {
-    return {
-      fontSize: 24,
-      lineHeight: 24,
-    };
+  if (hyphenatedLayout) {
+    return hyphenatedLayout;
   }
 
-  for (const fontSize of [POSTER_TITLE_FONT_SIZE, 30, 27, 24]) {
-    if (lines.every((line) => doesPosterTextFit(line, safeMaxWidth, fontSize))) {
-      return {
-        fontSize,
-        lineHeight:
-          fontSize === POSTER_TITLE_FONT_SIZE ? POSTER_TITLE_LINE_HEIGHT : fontSize,
-      };
-    }
-  }
+  const fallbackFontSize = POSTER_TITLE_MIN_FONT_SIZE;
 
   return {
-    fontSize: 24,
-    lineHeight: 24,
+    fontSize: fallbackFontSize,
+    lineHeight: Math.round(fallbackFontSize * POSTER_TITLE_LINE_HEIGHT_RATIO),
+    lines: getPosterTitleWords(value).slice(0, maxLines),
   };
 }
 
@@ -382,11 +533,17 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     posterPadding * 2 -
     POSTER_DATE_SLOT_WIDTH -
     POSTER_TITLE_RIGHT_PADDING;
-  const posterTitleLines = formatPosterTitleLines({
+  const posterTitleMaxHeight = POSTER_TITLE_ROW_HEIGHT;
+  const posterTitleLayout = getBestPosterTitleLayout({
+    maxHeight: posterTitleMaxHeight,
     maxWidth: posterTitleMaxWidth,
     value: rawTitle,
   });
-  const titleTypography = getPosterTitleTypography(posterTitleLines, posterTitleMaxWidth);
+  const posterTitleLines = posterTitleLayout.lines;
+  const titleTypography = {
+    fontSize: posterTitleLayout.fontSize,
+    lineHeight: posterTitleLayout.lineHeight,
+  };
   const priceLabel = event.price?.toUpperCase?.() ?? "";
   const entranceLabel = [priceLabel, "ENTRADA"].filter(Boolean).join(" | ");
   const addressLabel = formatPosterAddress(event.locationName);
@@ -688,6 +845,7 @@ const styles = StyleSheet.create({
     height: POSTER_TITLE_ROW_HEIGHT,
   },
   posterTitleBlock: {
+    alignSelf: "stretch",
     flex: 1,
     justifyContent: "center",
     minWidth: 0,
@@ -715,14 +873,14 @@ const styles = StyleSheet.create({
   },
   posterDateMain: {
     color: colors.text,
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: "900",
     letterSpacing: 0,
     lineHeight: 25,
   },
   posterDateSub: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "900",
     letterSpacing: 0,
     lineHeight: 14,
@@ -733,7 +891,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 5,
+    marginTop: 12,
   },
   organizerName: {
     color: colors.text,
@@ -742,7 +900,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: -0.5,
     lineHeight: 23,
-    marginLeft: 12,
+    marginRight: 6,
     minWidth: 0,
     textAlign: "right",
   },

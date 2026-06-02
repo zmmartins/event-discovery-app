@@ -44,7 +44,7 @@ const PREVIEW_HORIZONTAL_PADDING = 20;
 const PREVIEW_MAX_WIDTH = 300;
 const PREVIEW_POSTER_HORIZONTAL_PADDING = 14;
 const PREVIEW_POSTER_TOP_PADDING = 16;
-const PREVIEW_POSTER_BOTTOM_PADDING = 16;
+const PREVIEW_POSTER_BOTTOM_PADDING = 5;
 const PREVIEW_HEADER_HEIGHT = 140;
 const PREVIEW_IMAGE_GAP = 14;
 const PREVIEW_BOTTOM_GAP = 14;
@@ -131,11 +131,7 @@ function getPreviewCardHeight(imageSize) {
     PREVIEW_META_HEIGHT +
     PREVIEW_POSTER_BOTTOM_PADDING;
 
-  return clamp(
-    estimatedHeight,
-    PREVIEW_BASE_CARD_HEIGHT,
-    PREVIEW_MAX_CARD_HEIGHT
-  );
+  return clamp(estimatedHeight, PREVIEW_BASE_CARD_HEIGHT, PREVIEW_MAX_CARD_HEIGHT);
 }
 
 function getPreviewGeometry({ pinLayout, screenHeight, screenWidth, startPoint }) {
@@ -149,10 +145,7 @@ function getPreviewGeometry({ pinLayout, screenHeight, screenWidth, startPoint }
   const cardHeight = getPreviewCardHeight(imageSize);
 
   const left = (screenWidth - previewWidth) / 2;
-  const top = Math.max(
-    PREVIEW_HORIZONTAL_PADDING,
-    (screenHeight - cardHeight) / 2
-  );
+  const top = Math.max(PREVIEW_HORIZONTAL_PADDING, (screenHeight - cardHeight) / 2);
 
   return {
     cardHeight,
