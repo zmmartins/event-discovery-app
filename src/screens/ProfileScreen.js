@@ -1,18 +1,23 @@
 import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Image,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import EventCard from "../components/EventCard";
 import ExperiencePin from "../components/ExperiencePin";
 import { getEventPinMarkerAnchor } from "../components/EventPin";
 import ProfileExperienceCard from "../components/ProfileExperienceCard";
@@ -24,7 +29,7 @@ import {
 import { getCurrentUserProfile } from "../services/profileService";
 import { colors } from "../theme/colors";
 import { APP_MAP_STYLE } from "../theme/mapStyle";
-import { getAvatarImage, getEventPreviewImage } from "../utils/imageAssets";
+import { getAvatarImage } from "../utils/imageAssets";
 
 const DEFAULT_REGION = {
   latitude: 38.7223,
@@ -32,6 +37,37 @@ const DEFAULT_REGION = {
   longitude: -9.1393,
   longitudeDelta: 0.06,
 };
+
+const PROFILE_SECTIONS = [
+  { id: "attended", label: "Attended" },
+  { id: "going", label: "Going" },
+  { id: "saved", label: "Saved" },
+];
+const PROFILE_VIEWS = [
+  { icon: "list", label: "List", value: "list" },
+  { icon: "map", label: "Map", value: "map" },
+];
+const SHEET_EXPANDED_TOP_OFFSET = 72;
+const SHEET_COLLAPSED_SUMMARY_EXTRA_PADDING = 44;
+const SHEET_COLLAPSED_FALLBACK_VISIBLE_HEIGHT = 220;
+const BOTTOM_NAV_COLLAPSED_OVERLAP = 18;
+const SHEET_CORNER_RADIUS = 34;
+const SHEET_HORIZONTAL_PADDING = 18;
+const BOTTOM_NAV_RESERVED_HEIGHT = 122;
+const SHEET_EXTRA_BOTTOM_PADDING = 180;
+const PROFILE_COLUMN_GAP = 12;
+const PROFILE_ITEM_GAP = 22;
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function isMostlyVerticalGesture(gestureState) {
+  return (
+    Math.abs(gestureState.dy) > 8 &&
+    Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.25
+  );
+}
 
 function getProfileRegion(pins) {
   if (!pins?.length) return DEFAULT_REGION;
@@ -51,9 +87,9 @@ function getProfileRegion(pins) {
   };
 }
 
-function StatRow({ label, value }) {
+function Stat({ label, value }) {
   return (
-    <View style={styles.statRow}>
+    <View style={styles.stat}>
       <Text style={styles.statValue}>{value}</Text>
       <Text numberOfLines={1} style={styles.statLabel}>
         {label}
@@ -62,66 +98,99 @@ function StatRow({ label, value }) {
   );
 }
 
-function ProfileHeader({ profile }) {
+function ProfileSummary({ onLayout, profile }) {
   return (
-    <View style={styles.header}>
-      <Text numberOfLines={1} style={styles.username}>
-        {profile.username}
-      </Text>
+    <View onLayout={onLayout} style={styles.summary}>
+      <View style={styles.nameBlock}>
+        <Text numberOfLines={2} style={styles.name}>
+          {profile.name}
+        </Text>
+        <Text numberOfLines={1} style={styles.username}>
+          @{profile.username}
+        </Text>
+      </View>
 
-      <View style={styles.identityRow}>
-        <Image
-          accessibilityLabel={`${profile.username} profile picture`}
-          source={getAvatarImage(profile.avatarKey)}
-          style={styles.profileImage}
-        />
-
-        <View style={styles.statsStack}>
-          <StatRow label="friends" value={profile.stats.friends} />
-          <StatRow label="attended events" value={profile.stats.attendedEvents} />
-          <StatRow
-            label="unique experiences"
-            value={profile.stats.uniqueExperiences}
-          />
-        </View>
+      <View style={styles.statsRow}>
+        <Stat label="Friends" value={profile.stats.friends} />
+        <Stat label="Attended" value={profile.stats.attendedEvents} />
+        <Stat label="Unique" value={profile.stats.uniqueExperiences} />
       </View>
     </View>
   );
 }
 
-function ViewSelector({ activeView, onChange }) {
-  const options = [
-    { icon: "list", label: "List", value: "list" },
-    { icon: "map", label: "Map", value: "map" },
-  ];
-
+function ProfileSectionTabs({ activeSection, onChange, profile }) {
   return (
-    <View style={styles.selector}>
-      {options.map((option) => {
+    <View style={styles.sectionTabs}>
+      {PROFILE_SECTIONS.map((section) => {
+        const isActive = activeSection === section.id;
+        const count = profile.sections?.[section.id]?.count ?? 0;
+
+        return (
+          <Pressable
+            accessibilityLabel={`Show ${section.label} profile section`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
+            key={section.id}
+            onPress={() => onChange(section.id)}
+            style={({ pressed }) => [
+              styles.sectionTab,
+              isActive && styles.sectionTabActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.sectionTabLabel,
+                isActive && styles.sectionTabLabelActive,
+              ]}
+            >
+              {section.label}
+            </Text>
+            <Text
+              style={[
+                styles.sectionTabCount,
+                isActive && styles.sectionTabCountActive,
+              ]}
+            >
+              {count}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function ProfileViewSelector({ activeView, onChange }) {
+  return (
+    <View style={styles.viewSelector}>
+      {PROFILE_VIEWS.map((option) => {
         const isActive = activeView === option.value;
 
         return (
           <Pressable
-            accessibilityLabel={`Show profile ${option.label.toLowerCase()} view`}
+            accessibilityLabel={`Show ${option.label.toLowerCase()} view`}
             accessibilityRole="button"
             accessibilityState={{ selected: isActive }}
             key={option.value}
             onPress={() => onChange(option.value)}
             style={({ pressed }) => [
-              styles.selectorButton,
-              isActive && styles.selectorButtonActive,
+              styles.viewSelectorButton,
+              isActive && styles.viewSelectorButtonActive,
               pressed && styles.pressed,
             ]}
           >
             <Ionicons
               name={option.icon}
-              size={22}
+              size={18}
               color={isActive ? colors.iconActive : colors.iconMuted}
             />
             <Text
               style={[
-                styles.selectorText,
-                isActive && styles.selectorTextActive,
+                styles.viewSelectorText,
+                isActive && styles.viewSelectorTextActive,
               ]}
             >
               {option.label}
@@ -133,15 +202,177 @@ function ViewSelector({ activeView, onChange }) {
   );
 }
 
+function ProfileEmptyState({ body, title }) {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyStateTitle}>{title}</Text>
+      <Text style={styles.emptyStateBody}>{body}</Text>
+    </View>
+  );
+}
+
+function MasonryEventList({
+  columnWidth,
+  events,
+  onOpenEvent,
+  onSavedChange,
+  sectionId,
+}) {
+  const leftColumnEvents = events.filter((_, index) => index % 2 === 0);
+  const rightColumnEvents = events.filter((_, index) => index % 2 === 1);
+
+  return (
+    <View style={styles.masonryRow}>
+      <View style={[styles.masonryColumn, { width: columnWidth }]}>
+        {leftColumnEvents.map((event) => (
+          <EventCard
+            columnWidth={columnWidth}
+            event={event}
+            key={event.id}
+            onOpen={() => onOpenEvent(event.id)}
+            onSavedChange={onSavedChange}
+            screen="ProfileScreen"
+            source={`profile_${sectionId}_list`}
+          />
+        ))}
+      </View>
+
+      <View style={[styles.masonryColumn, { width: columnWidth }]}>
+        {rightColumnEvents.map((event) => (
+          <EventCard
+            columnWidth={columnWidth}
+            event={event}
+            key={event.id}
+            onOpen={() => onOpenEvent(event.id)}
+            onSavedChange={onSavedChange}
+            screen="ProfileScreen"
+            source={`profile_${sectionId}_list`}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function AttendedMapView({ onPinPress, pins, profileRegion }) {
+  return (
+    <View style={styles.mapPanel}>
+      <MapView
+        customMapStyle={APP_MAP_STYLE}
+        initialRegion={profileRegion}
+        loadingBackgroundColor={colors.background}
+        loadingEnabled
+        loadingIndicatorColor={colors.text}
+        mapType="standard"
+        provider={PROVIDER_GOOGLE}
+        showsBuildings={false}
+        showsCompass={false}
+        showsIndoors={false}
+        showsMyLocationButton={false}
+        showsPointsOfInterest={false}
+        showsTraffic={false}
+        style={styles.map}
+        toolbarEnabled={false}
+      >
+        {pins.map((pin) => (
+          <Marker
+            anchor={getEventPinMarkerAnchor(pin.event)}
+            coordinate={{
+              latitude: pin.latitude,
+              longitude: pin.longitude,
+            }}
+            key={pin.id}
+            onPress={(markerEvent) => onPinPress(markerEvent, pin)}
+          >
+            <ExperiencePin event={pin.event} photoRef={pin.photoRef} />
+          </Marker>
+        ))}
+      </MapView>
+    </View>
+  );
+}
+
+function ProfileMapPlaceholder({ title }) {
+  return (
+    <View style={styles.mapPlaceholder}>
+      <Ionicons name="map" size={28} color={colors.iconMuted} />
+      <Text style={styles.mapPlaceholderText}>{title}</Text>
+    </View>
+  );
+}
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const router = useRouter();
-  const [activeView, setActiveView] = useState("list");
+  const { height: screenHeight, width: screenWidth } = useWindowDimensions();
+  const expandedTop = insets.top + SHEET_EXPANDED_TOP_OFFSET;
+  const [summaryHeight, setSummaryHeight] = useState(0);
+  const collapsedVisibleHeight =
+    (summaryHeight || SHEET_COLLAPSED_FALLBACK_VISIBLE_HEIGHT) +
+    SHEET_COLLAPSED_SUMMARY_EXTRA_PADDING;
+  const collapsedTop = Math.max(
+    expandedTop + 140,
+    screenHeight - collapsedVisibleHeight + BOTTOM_NAV_COLLAPSED_OVERLAP
+  );
+  const columnWidth = Math.max(
+    (screenWidth - SHEET_HORIZONTAL_PADDING * 2 - PROFILE_COLUMN_GAP) / 2,
+    1
+  );
+  const [activeSection, setActiveSection] = useState("attended");
+  const [activeViews, setActiveViews] = useState({
+    attended: "list",
+    going: "list",
+    saved: "list",
+  });
+  const [isSheetExpanded, setIsSheetExpanded] = useState(false);
   const [profile, setProfile] = useState(null);
+
+  const currentSheetY = useRef(collapsedTop);
+  const scrollOffsetY = useRef(0);
+  const scrollViewRef = useRef(null);
+  const hasInitializedSheet = useRef(false);
+  const sheetStartY = useRef(collapsedTop);
+  const sheetY = useRef(new Animated.Value(collapsedTop)).current;
+
+  const activeView = activeViews[activeSection] ?? "list";
+  const sheetBodyOpacity = useMemo(() => {
+    const fullyVisiblePoint = collapsedTop - 140;
+    const hiddenPoint = collapsedTop - 24;
+
+    return sheetY.interpolate({
+      inputRange: [expandedTop, fullyVisiblePoint, hiddenPoint, collapsedTop],
+      outputRange: [1, 1, 0, 0],
+      extrapolate: "clamp",
+    });
+  }, [collapsedTop, expandedTop, sheetY]);
+  const sheetBodyTranslateY = useMemo(
+    () =>
+      sheetY.interpolate({
+        inputRange: [expandedTop, collapsedTop],
+        outputRange: [0, 18],
+        extrapolate: "clamp",
+      }),
+    [collapsedTop, expandedTop, sheetY]
+  );
+
   useInteractionLogger(LOG_ACTIONS.profileOpened, {
     screen: "ProfileScreen",
   });
+
+  const refreshProfile = useCallback(async () => {
+    const nextProfile = await getCurrentUserProfile();
+    setProfile(nextProfile);
+  }, []);
+
+  const handleSummaryLayout = useCallback((event) => {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+
+    if (nextHeight <= 0) return;
+    setSummaryHeight((currentHeight) =>
+      currentHeight === nextHeight ? currentHeight : nextHeight
+    );
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -156,54 +387,161 @@ export default function ProfileScreen() {
       return () => {
         isActive = false;
       };
-    }, []),
+    }, [])
   );
 
-  const profileRegion = useMemo(
-    () => getProfileRegion(profile?.mapPins),
-    [profile?.mapPins],
-  );
+  const profileRegion = useMemo(() => {
+    const attendedPins = profile?.sections?.attended?.mapPins ?? profile?.mapPins;
 
-  const updateSavedEvent = useCallback((updatedEvent) => {
-    if (!updatedEvent) return;
+    return getProfileRegion(attendedPins);
+  }, [profile?.mapPins, profile?.sections?.attended?.mapPins]);
 
-    setProfile((currentProfile) => {
-      if (!currentProfile) return currentProfile;
-
-      return {
-        ...currentProfile,
-        experiences: currentProfile.experiences.map((experience) =>
-          experience.event.id === updatedEvent.id
-            ? { ...experience, event: updatedEvent }
-            : experience,
-        ),
-      };
+  useEffect(() => {
+    const listenerId = sheetY.addListener(({ value }) => {
+      currentSheetY.current = value;
     });
-  }, []);
 
-  const openExperience = useCallback(
+    return () => sheetY.removeListener(listenerId);
+  }, [sheetY]);
+
+  useEffect(() => {
+    if (!summaryHeight && !hasInitializedSheet.current) return;
+
+    if (!hasInitializedSheet.current) {
+      sheetY.setValue(collapsedTop);
+      currentSheetY.current = collapsedTop;
+      sheetStartY.current = collapsedTop;
+      scrollOffsetY.current = 0;
+      setIsSheetExpanded(false);
+      scrollViewRef.current?.scrollTo?.({ animated: false, y: 0 });
+      hasInitializedSheet.current = true;
+      return;
+    }
+
+    if (!isSheetExpanded) {
+      sheetY.setValue(collapsedTop);
+      currentSheetY.current = collapsedTop;
+      sheetStartY.current = collapsedTop;
+    }
+  }, [collapsedTop, isSheetExpanded, sheetY, summaryHeight]);
+
+  const animateSheetTo = useCallback(
+    (destination) => {
+      const willExpand = destination === expandedTop;
+
+      setIsSheetExpanded(willExpand);
+      if (!willExpand) {
+        scrollOffsetY.current = 0;
+        scrollViewRef.current?.scrollTo?.({ animated: false, y: 0 });
+      }
+
+      Animated.spring(sheetY, {
+        damping: 24,
+        mass: 0.8,
+        stiffness: 210,
+        toValue: destination,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && !willExpand) {
+          scrollOffsetY.current = 0;
+        }
+      });
+    },
+    [expandedTop, sheetY]
+  );
+
+  const sheetPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+          if (!isMostlyVerticalGesture(gestureState)) return false;
+
+          const isDraggingDown = gestureState.dy > 0;
+          const isAtTopOfScroll = scrollOffsetY.current <= 0;
+
+          if (!isSheetExpanded) return true;
+
+          return isDraggingDown && isAtTopOfScroll;
+        },
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          if (!isMostlyVerticalGesture(gestureState)) return false;
+
+          if (!isSheetExpanded) return true;
+
+          return gestureState.dy > 0 && scrollOffsetY.current <= 0;
+        },
+        onPanResponderGrant: () => {
+          sheetStartY.current = currentSheetY.current;
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const nextY = clamp(
+            sheetStartY.current + gestureState.dy,
+            expandedTop,
+            collapsedTop
+          );
+
+          currentSheetY.current = nextY;
+          sheetY.setValue(nextY);
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          const midpoint = (expandedTop + collapsedTop) / 2;
+          const shouldCollapse =
+            gestureState.vy > 0.35 || currentSheetY.current > midpoint;
+
+          animateSheetTo(shouldCollapse ? collapsedTop : expandedTop);
+        },
+        onPanResponderTerminate: () => {
+          const midpoint = (expandedTop + collapsedTop) / 2;
+          const shouldCollapse = currentSheetY.current > midpoint;
+
+          animateSheetTo(shouldCollapse ? collapsedTop : expandedTop);
+        },
+      }),
+    [animateSheetTo, collapsedTop, expandedTop, isSheetExpanded, sheetY]
+  );
+
+  const openEvent = useCallback(
     (eventId) => {
       router.push({
         pathname: "/event/[id]",
         params: { id: eventId },
       });
     },
-    [router],
+    [router]
+  );
+
+  const handleSectionChange = useCallback(
+    (nextSection) => {
+      if (nextSection === activeSection) return;
+
+      setActiveSection(nextSection);
+      logInteraction(LOG_ACTIONS.profileViewChanged, {
+        result: nextSection,
+        route: pathname,
+        screen: "ProfileScreen",
+        source: "profile_section_selector",
+      }).catch(() => null);
+    },
+    [activeSection, pathname]
   );
 
   const handleViewChange = useCallback(
     (nextView) => {
       if (nextView === activeView) return;
 
-      setActiveView(nextView);
+      setActiveViews((currentViews) => ({
+        ...currentViews,
+        [activeSection]: nextView,
+      }));
       logInteraction(LOG_ACTIONS.profileViewChanged, {
         result: nextView,
         route: pathname,
         screen: "ProfileScreen",
-        source: "profile_view_selector",
+        source: `profile_${activeSection}_view_selector`,
       }).catch(() => null);
     },
-    [activeView, pathname],
+    [activeSection, activeView, pathname]
   );
 
   const handlePinPress = useCallback(
@@ -216,106 +554,221 @@ export default function ProfileScreen() {
         screen: "ProfileScreen",
         source: "profile_map_pin",
       }).catch(() => null);
-      openExperience(pin.eventId);
+      openEvent(pin.eventId);
     },
-    [openExperience, pathname],
+    [openEvent, pathname]
   );
+
+  function renderActiveSectionContent() {
+    if (!profile) return null;
+
+    const attendedSection = profile.sections?.attended;
+    const goingSection = profile.sections?.going;
+    const savedSection = profile.sections?.saved;
+
+    if (activeSection === "attended") {
+      const experiences = attendedSection?.experiences ?? profile.experiences ?? [];
+      const pins = attendedSection?.mapPins ?? profile.mapPins ?? [];
+
+      if (activeView === "map") {
+        if (pins.length === 0) {
+          return (
+            <ProfileEmptyState
+              title="No attended events yet."
+              body="Your attended event map will appear here."
+            />
+          );
+        }
+
+        return (
+          <AttendedMapView
+            onPinPress={handlePinPress}
+            pins={pins}
+            profileRegion={profileRegion}
+          />
+        );
+      }
+
+      if (experiences.length === 0) {
+        return (
+          <ProfileEmptyState
+            title="No attended events yet."
+            body="Your event memories will appear here after you attend events."
+          />
+        );
+      }
+
+      return (
+        <View style={styles.attendedList}>
+          {experiences.map((experience) => (
+            <ProfileExperienceCard
+              event={experience.event}
+              experience={experience}
+              key={experience.id}
+              onOpen={() => openEvent(experience.event.id)}
+              onSavedChange={refreshProfile}
+              screen="ProfileScreen"
+              source="profile_attended_list"
+            />
+          ))}
+        </View>
+      );
+    }
+
+    if (activeSection === "going") {
+      const goingEvents = goingSection?.events ?? profile.goingEvents ?? [];
+
+      if (activeView === "map") {
+        return <ProfileMapPlaceholder title="Going map coming soon" />;
+      }
+
+      if (goingEvents.length === 0) {
+        return (
+          <ProfileEmptyState
+            title="You are not going to any upcoming events yet."
+            body="Join an event to see it here."
+          />
+        );
+      }
+
+      return (
+        <MasonryEventList
+          columnWidth={columnWidth}
+          events={goingEvents}
+          onOpenEvent={openEvent}
+          onSavedChange={refreshProfile}
+          sectionId="going"
+        />
+      );
+    }
+
+    const savedEvents = savedSection?.events ?? profile.savedEvents ?? [];
+
+    if (activeView === "map") {
+      return <ProfileMapPlaceholder title="Saved map coming soon" />;
+    }
+
+    if (savedEvents.length === 0) {
+      return (
+        <ProfileEmptyState
+          title="No saved upcoming events yet."
+          body="Saved events that are still upcoming will appear here."
+        />
+      );
+    }
+
+    return (
+      <MasonryEventList
+        columnWidth={columnWidth}
+        events={savedEvents}
+        onOpenEvent={openEvent}
+        onSavedChange={refreshProfile}
+        sectionId="saved"
+      />
+    );
+  }
 
   if (!profile) {
     return (
-      <View style={[styles.loadingContainer, { paddingTop: insets.top + 24 }]}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 18 }]}>
-      <ProfileHeader profile={profile} />
-      <ViewSelector activeView={activeView} onChange={handleViewChange} />
+    <View style={styles.root}>
+      <Image
+        resizeMode="cover"
+        source={getAvatarImage(profile.heroImageKey ?? profile.avatarKey)}
+        style={styles.backgroundImage}
+      />
+      <View style={styles.backgroundOverlay} />
 
-      {activeView === "list" ? (
-        <ScrollView
-          contentContainerStyle={[
-            styles.listContent,
+      {!isSheetExpanded && (
+        <View
+          {...sheetPanResponder.panHandlers}
+          pointerEvents="auto"
+          style={[
+            styles.collapsedGestureLayer,
             {
-              paddingBottom: Math.max(insets.bottom, 12) + 92,
+              bottom: Math.max(insets.bottom, 12) + BOTTOM_NAV_RESERVED_HEIGHT,
             },
           ]}
-          showsVerticalScrollIndicator={false}
-        >
-          {profile.experiences.map((experience) => (
-            <View key={experience.id} style={styles.experienceBlock}>
-              <ProfileExperienceCard
-                event={experience.event}
-                experience={experience}
-                onOpen={() => openExperience(experience.event.id)}
-                onSavedChange={updateSavedEvent}
-                screen="ProfileScreen"
-                source="profile_list"
-              />
-
-              <View style={styles.photoGrid}>
-                {experience.photoRefs.map((photoRef) => (
-                  <Image
-                    accessibilityLabel={`${experience.event.title} memory`}
-                    key={photoRef.id}
-                    source={getEventPreviewImage(photoRef.imageKey)}
-                    style={styles.photoTile}
-                  />
-                ))}
-              </View>
-            </View>
-          ))}
-        </ScrollView>
-      ) : (
-        <View
-          style={[
-            styles.mapPanel,
-            { marginBottom: Math.max(insets.bottom, 12) + 86 },
-          ]}
-        >
-          <MapView
-            customMapStyle={APP_MAP_STYLE}
-            initialRegion={profileRegion}
-            loadingBackgroundColor={colors.background}
-            loadingEnabled
-            loadingIndicatorColor={colors.text}
-            mapType="standard"
-            provider={PROVIDER_GOOGLE}
-            showsBuildings={false}
-            showsCompass={false}
-            showsIndoors={false}
-            showsMyLocationButton={false}
-            showsPointsOfInterest={false}
-            showsTraffic={false}
-            style={styles.map}
-            toolbarEnabled={false}
-          >
-            {profile.mapPins.map((pin) => (
-              <Marker
-                anchor={getEventPinMarkerAnchor(pin.event)}
-                coordinate={{
-                  latitude: pin.latitude,
-                  longitude: pin.longitude,
-                }}
-                key={pin.id}
-                onPress={(markerEvent) => handlePinPress(markerEvent, pin)}
-              >
-                <ExperiencePin event={pin.event} photoRef={pin.photoRef} />
-              </Marker>
-            ))}
-          </MapView>
-        </View>
+        />
       )}
+
+      <Animated.View
+        {...sheetPanResponder.panHandlers}
+        style={[
+          styles.sheet,
+          {
+            height: screenHeight + 80,
+            transform: [{ translateY: sheetY }],
+          },
+        ]}
+      >
+        <BlurView intensity={32} style={StyleSheet.absoluteFill} tint="light" />
+        <View pointerEvents="none" style={styles.sheetTint} />
+
+        <ScrollView
+          contentContainerStyle={[
+            styles.sheetContent,
+            {
+              paddingBottom:
+                Math.max(insets.bottom, 12) +
+                BOTTOM_NAV_RESERVED_HEIGHT +
+                SHEET_EXTRA_BOTTOM_PADDING,
+            },
+          ]}
+          onScroll={(event) => {
+            scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+          }}
+          ref={scrollViewRef}
+          scrollEnabled={isSheetExpanded}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          style={styles.sheetScroller}
+        >
+          <ProfileSummary onLayout={handleSummaryLayout} profile={profile} />
+          <Animated.View
+            pointerEvents={isSheetExpanded ? "auto" : "none"}
+            style={[
+              styles.sheetBody,
+              {
+                opacity: sheetBodyOpacity,
+                transform: [{ translateY: sheetBodyTranslateY }],
+              },
+            ]}
+          >
+            <ProfileSectionTabs
+              activeSection={activeSection}
+              onChange={handleSectionChange}
+              profile={profile}
+            />
+            <ProfileViewSelector activeView={activeView} onChange={handleViewChange} />
+            {renderActiveSectionContent()}
+          </Animated.View>
+        </ScrollView>
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     backgroundColor: colors.background,
     flex: 1,
+    overflow: "hidden",
+  },
+  backgroundImage: {
+    ...StyleSheet.absoluteFillObject,
+    height: "100%",
+    width: "100%",
+  },
+  backgroundOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(247, 250, 247, 0.28)",
   },
   loadingContainer: {
     alignItems: "center",
@@ -323,112 +776,227 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
   },
-  header: {
-    paddingHorizontal: 24,
+  collapsedGestureLayer: {
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 1,
   },
-  username: {
-    color: colors.text,
-    fontSize: 25,
-    fontWeight: "900",
-    letterSpacing: 0,
+  sheet: {
+    borderColor: "rgba(255, 255, 255, 0.68)",
+    borderTopLeftRadius: SHEET_CORNER_RADIUS,
+    borderTopRightRadius: SHEET_CORNER_RADIUS,
+    borderWidth: StyleSheet.hairlineWidth,
+    bottom: 0,
+    elevation: 12,
+    left: 0,
+    overflow: "hidden",
+    position: "absolute",
+    right: 0,
+    shadowColor: colors.effects.shadow,
+    shadowOffset: {
+      width: 0,
+      height: -8,
+    },
+    shadowOpacity: 0.16,
+    shadowRadius: 22,
+    zIndex: 2,
   },
-  identityRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 22,
-    marginTop: 18,
+  sheetTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255, 255, 255, 0.62)",
   },
-  profileImage: {
-    borderColor: colors.surface,
-    borderRadius: 48,
-    borderWidth: 4,
-    height: 96,
-    width: 96,
-  },
-  statsStack: {
+  sheetScroller: {
     flex: 1,
-    gap: 8,
+  },
+  sheetContent: {
+    paddingHorizontal: SHEET_HORIZONTAL_PADDING,
+    paddingTop: 10,
+  },
+  sheetBody: {
+    flex: 1,
+  },
+  summary: {
+    gap: 14,
+  },
+  nameBlock: {
     minWidth: 0,
   },
-  statRow: {
-    alignItems: "baseline",
+  name: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: 32,
+  },
+  username: {
+    color: colors.secondaryText,
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0,
+    marginTop: 4,
+  },
+  statsRow: {
     flexDirection: "row",
     gap: 8,
+  },
+  stat: {
+    backgroundColor: colors.effects.surfaceOverlay,
+    borderColor: colors.effects.surfaceStrongBorder,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    minHeight: 66,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
   },
   statValue: {
     color: colors.text,
     fontSize: 20,
     fontWeight: "900",
-    minWidth: 26,
+    lineHeight: 24,
   },
   statLabel: {
     color: colors.secondaryText,
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0,
+    marginTop: 3,
   },
-  selector: {
-    backgroundColor: colors.softSurface,
-    borderColor: colors.border,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 22,
-    flexDirection: "row",
-    marginHorizontal: 24,
-    marginTop: 22,
-    minHeight: 48,
-    overflow: "hidden",
-    padding: 4,
-  },
-  selectorButton: {
-    alignItems: "center",
-    borderRadius: 18,
-    flex: 1,
+  sectionTabs: {
     flexDirection: "row",
     gap: 8,
-    justifyContent: "center",
-    minHeight: 40,
+    marginTop: 34,
   },
-  selectorButtonActive: {
+  sectionTab: {
+    alignItems: "center",
+    backgroundColor: colors.effects.surfaceOverlay,
+    borderColor: colors.effects.surfaceStrongBorder,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 58,
+    paddingHorizontal: 8,
+  },
+  sectionTabActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sectionTabLabel: {
+    color: colors.secondaryText,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  sectionTabLabelActive: {
+    color: colors.text,
+  },
+  sectionTabCount: {
+    color: colors.mutedText,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  sectionTabCountActive: {
+    color: colors.text,
+  },
+  viewSelector: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.effects.surfaceOverlay,
+    borderColor: colors.effects.surfaceStrongBorder,
+    borderRadius: 21,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: 4,
+    marginTop: 16,
+    padding: 4,
+  },
+  viewSelectorButton: {
+    alignItems: "center",
+    borderRadius: 17,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 34,
+    minWidth: 84,
+    paddingHorizontal: 12,
+  },
+  viewSelectorButtonActive: {
     backgroundColor: colors.primary,
   },
-  selectorText: {
+  viewSelectorText: {
     color: colors.iconMuted,
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 0,
   },
-  selectorTextActive: {
+  viewSelectorTextActive: {
     color: colors.text,
   },
-  listContent: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
+  attendedList: {
+    gap: 24,
+    marginTop: 18,
   },
-  experienceBlock: {
-    marginBottom: 22,
-  },
-  photoGrid: {
+  masonryRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 10,
+    gap: PROFILE_COLUMN_GAP,
+    marginTop: 18,
   },
-  photoTile: {
-    aspectRatio: 1,
-    borderRadius: 10,
-    width: "31.2%",
+  masonryColumn: {
+    gap: PROFILE_ITEM_GAP,
   },
   mapPanel: {
-    borderColor: colors.border,
+    borderColor: colors.effects.surfaceStrongBorder,
+    borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 22,
-    flex: 1,
-    marginHorizontal: 20,
+    height: 430,
     marginTop: 18,
     overflow: "hidden",
   },
   map: {
     flex: 1,
+  },
+  mapPlaceholder: {
+    alignItems: "center",
+    backgroundColor: colors.effects.surfaceOverlay,
+    borderColor: colors.effects.surfaceStrongBorder,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+    justifyContent: "center",
+    marginTop: 18,
+    minHeight: 220,
+    padding: 24,
+  },
+  mapPlaceholderText: {
+    color: colors.secondaryText,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textAlign: "center",
+  },
+  emptyState: {
+    backgroundColor: colors.effects.surfaceOverlay,
+    borderColor: colors.effects.surfaceStrongBorder,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+    marginTop: 18,
+    padding: 20,
+  },
+  emptyStateTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  emptyStateBody: {
+    color: colors.secondaryText,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
   },
   pressed: {
     opacity: 0.72,

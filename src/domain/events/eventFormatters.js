@@ -22,7 +22,9 @@ export function formatEventCardDate(value) {
 }
 
 export function formatAttendedExperienceDate(value) {
-  const date = new Date(`${value}T00:00:00`);
+  const date = value?.includes?.("T")
+    ? new Date(value)
+    : new Date(`${value}T00:00:00`);
 
   if (Number.isNaN(date.getTime())) return "PAST EXPERIENCE";
 

@@ -8,10 +8,11 @@ exploration, image-led browsing, friend context, a cultural-passport profile,
 shake-to-discover, location awareness, haptic feedback, and interaction logging
 for usability testing.
 
-The current data set is local mock data. Events are spread across Portugal, while
-the default map/discovery origin is Lisbon. The mock data layer is normalized
-into backend-like entities and relationship records, and services compose those
-records into the UI-friendly objects consumed by screens.
+The current data set is local mock data. Events are spread across Portugal, the
+committed event calendar is dated June 2026, and the default map/discovery origin
+is Lisbon. The mock data layer is normalized into backend-like entities and
+relationship records, and services compose those records into the UI-friendly
+objects consumed by screens.
 
 ## Current State
 
@@ -43,7 +44,9 @@ Implemented areas:
 - Event detail screen with generated detail media, social context, draggable
   sheet behavior, bookmark toggling, participation action, haptics, and
   interaction logging.
-- Profile screen with list and map views for mock attended experiences.
+- Profile screen with a draggable cultural-passport sheet, Attended/Going/Saved
+  sections, per-section list/map selectors, attended-experience memories,
+  upcoming joined/saved event lists, and an attended-experience map.
 - Shake to Discover with accelerometer detection, vibration, haptic feedback,
   animated visual feedback, Discovery Mode activation, and redirect to the list.
 - Interaction logging stored in AsyncStorage, with JSON/CSV/bundle export helper
@@ -54,6 +57,7 @@ Implemented areas:
 - Event image variant generation for map pins, previews/cards, and detail media.
 - Conditional Liquid Glass/native-tab styling helpers for supported iOS surfaces.
 - Placeholder screens for Messages, Search, Community, and Notifications.
+- Placeholder map states for the Profile Going and Saved sections.
 
 Out of scope for the current academic prototype:
 
@@ -378,11 +382,17 @@ map preview and review card copy.
 
 Current behavior:
 
-- Profile header with username, avatar, and stats.
-- Segmented list/map selector.
-- List of mock attended experiences with image grids.
-- Profile map using custom experience pins.
-- Event detail navigation from both views.
+- Full-screen avatar/hero background with a draggable blurred profile sheet.
+- Profile summary with display name, username, and derived stats.
+- Attended, Going, and Saved section tabs with counts.
+- Per-section list/map selector.
+- Attended list cards with looping memory photo carousels, attendee stacks,
+  bookmark toggling, and event-detail navigation.
+- Attended map using custom experience pins and random memory photos from each
+  profile experience.
+- Going and Saved list views rendered as two-column event feeds using the same
+  event cards as discovery.
+- Going and Saved map views are intentionally placeholder states for now.
 
 ### Shake To Discover
 
@@ -488,9 +498,15 @@ getDiscoverEvents(options);
 ```
 
 `profileService.js` composes profile experiences from normalized user event
-experience records, event view models, and friendship records. Profile stats are
-derived from accepted friendships and the current user's explicit experience
-records.
+experience records, event view models, friendship records, and the full event
+list. Profile stats are derived from accepted friendships and the current user's
+explicit experience records. Profile sections are derived as:
+
+- `attended`: explicit user event experience records with memory photo refs.
+- `going`: future visible events where the current user is registered.
+- `saved`: future visible events saved by the current user.
+
+Only attended events currently produce profile map pins.
 
 Interaction logs and logging context are stored in AsyncStorage.
 
@@ -613,7 +629,8 @@ Recommended manual smoke test:
 3. Open `/map/list`, save/unsave an event, and open an event detail screen.
 4. Use `/map/shake-discover`, shake the device, and confirm Discovery Mode
    filters the list/map until dismissed.
-5. Open Profile list and map views and confirm experiences navigate to details.
+5. Open Profile, switch Attended/Going/Saved sections, toggle list/map views,
+   and confirm attended pins/cards plus going/saved cards navigate to details.
 
 For course evaluation, the current prototype supports evidence around task
 completion, event preview/detail opens, save/join actions, shake detection,
