@@ -52,6 +52,8 @@ const SHEET_COLLAPSED_SUMMARY_EXTRA_PADDING = 44;
 const SHEET_COLLAPSED_FALLBACK_VISIBLE_HEIGHT = 220;
 const BOTTOM_NAV_COLLAPSED_OVERLAP = 18;
 const SHEET_CORNER_RADIUS = 34;
+const SHEET_SCREEN_MARGIN = 18;
+const SHEET_TOP_EXTENSION = 80;
 const SHEET_HORIZONTAL_PADDING = 18;
 const BOTTOM_NAV_RESERVED_HEIGHT = 122;
 const SHEET_EXTRA_BOTTOM_PADDING = 180;
@@ -315,8 +317,9 @@ export default function ProfileScreen() {
     expandedTop + 140,
     screenHeight - collapsedVisibleHeight + BOTTOM_NAV_COLLAPSED_OVERLAP
   );
+  const sheetWidth = Math.max(screenWidth - SHEET_SCREEN_MARGIN * 2, 1);
   const columnWidth = Math.max(
-    (screenWidth - SHEET_HORIZONTAL_PADDING * 2 - PROFILE_COLUMN_GAP) / 2,
+    (sheetWidth - SHEET_HORIZONTAL_PADDING * 2 - PROFILE_COLUMN_GAP) / 2,
     1
   );
   const [activeSection, setActiveSection] = useState("attended");
@@ -332,8 +335,10 @@ export default function ProfileScreen() {
   const scrollOffsetY = useRef(0);
   const scrollViewRef = useRef(null);
   const hasInitializedSheet = useRef(false);
+  const isSheetExpandedRef = useRef(false);
   const sheetStartY = useRef(collapsedTop);
   const sheetY = useRef(new Animated.Value(collapsedTop)).current;
+  const previousCollapsedTop = useRef(collapsedTop);
 
   const activeView = activeViews[activeSection] ?? "list";
   const sheetBodyOpacity = useMemo(() => {
@@ -354,6 +359,14 @@ export default function ProfileScreen() {
         extrapolate: "clamp",
       }),
     [collapsedTop, expandedTop, sheetY]
+  );
+  const sheetHeight = useMemo(
+    () =>
+      Animated.subtract(
+        screenHeight + SHEET_TOP_EXTENSION - SHEET_SCREEN_MARGIN,
+        sheetY
+      ),
+    [screenHeight, sheetY]
   );
 
   useInteractionLogger(LOG_ACTIONS.profileOpened, {
@@ -411,39 +424,50 @@ export default function ProfileScreen() {
       sheetY.setValue(collapsedTop);
       currentSheetY.current = collapsedTop;
       sheetStartY.current = collapsedTop;
+      previousCollapsedTop.current = collapsedTop;
       scrollOffsetY.current = 0;
+      isSheetExpandedRef.current = false;
       setIsSheetExpanded(false);
       scrollViewRef.current?.scrollTo?.({ animated: false, y: 0 });
       hasInitializedSheet.current = true;
       return;
     }
 
-    if (!isSheetExpanded) {
+    const lastCollapsedTop = previousCollapsedTop.current;
+    const collapsedTopChanged = lastCollapsedTop !== collapsedTop;
+
+    previousCollapsedTop.current = collapsedTop;
+
+    if (!collapsedTopChanged) return;
+
+    const wasCollapsed = Math.abs(currentSheetY.current - lastCollapsedTop) < 2;
+
+    if (wasCollapsed) {
       sheetY.setValue(collapsedTop);
       currentSheetY.current = collapsedTop;
       sheetStartY.current = collapsedTop;
     }
-  }, [collapsedTop, isSheetExpanded, sheetY, summaryHeight]);
+  }, [collapsedTop, sheetY, summaryHeight]);
 
   const animateSheetTo = useCallback(
     (destination) => {
       const willExpand = destination === expandedTop;
-
-      setIsSheetExpanded(willExpand);
-      if (!willExpand) {
-        scrollOffsetY.current = 0;
-        scrollViewRef.current?.scrollTo?.({ animated: false, y: 0 });
-      }
 
       Animated.spring(sheetY, {
         damping: 24,
         mass: 0.8,
         stiffness: 210,
         toValue: destination,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start(({ finished }) => {
-        if (finished && !willExpand) {
+        if (!finished) return;
+
+        isSheetExpandedRef.current = willExpand;
+        setIsSheetExpanded(willExpand);
+
+        if (!willExpand) {
           scrollOffsetY.current = 0;
+          scrollViewRef.current?.scrollTo?.({ animated: false, y: 0 });
         }
       });
     },
@@ -460,14 +484,14 @@ export default function ProfileScreen() {
           const isDraggingDown = gestureState.dy > 0;
           const isAtTopOfScroll = scrollOffsetY.current <= 0;
 
-          if (!isSheetExpanded) return true;
+          if (!isSheetExpandedRef.current) return true;
 
           return isDraggingDown && isAtTopOfScroll;
         },
         onMoveShouldSetPanResponder: (_, gestureState) => {
           if (!isMostlyVerticalGesture(gestureState)) return false;
 
-          if (!isSheetExpanded) return true;
+          if (!isSheetExpandedRef.current) return true;
 
           return gestureState.dy > 0 && scrollOffsetY.current <= 0;
         },
@@ -498,7 +522,7 @@ export default function ProfileScreen() {
           animateSheetTo(shouldCollapse ? collapsedTop : expandedTop);
         },
       }),
-    [animateSheetTo, collapsedTop, expandedTop, isSheetExpanded, sheetY]
+    [animateSheetTo, collapsedTop, expandedTop, sheetY]
   );
 
   const openEvent = useCallback(
@@ -703,7 +727,10 @@ export default function ProfileScreen() {
         style={[
           styles.sheet,
           {
-            height: screenHeight + 80,
+            height: sheetHeight,
+            left: SHEET_SCREEN_MARGIN,
+            right: SHEET_SCREEN_MARGIN,
+            top: -SHEET_TOP_EXTENSION,
             transform: [{ translateY: sheetY }],
           },
         ]}
@@ -785,15 +812,11 @@ const styles = StyleSheet.create({
   },
   sheet: {
     borderColor: "rgba(255, 255, 255, 0.68)",
-    borderTopLeftRadius: SHEET_CORNER_RADIUS,
-    borderTopRightRadius: SHEET_CORNER_RADIUS,
+    borderRadius: SHEET_CORNER_RADIUS,
     borderWidth: StyleSheet.hairlineWidth,
-    bottom: 0,
     elevation: 12,
-    left: 0,
     overflow: "hidden",
     position: "absolute",
-    right: 0,
     shadowColor: colors.effects.shadow,
     shadowOffset: {
       width: 0,
