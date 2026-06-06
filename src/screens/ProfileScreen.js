@@ -47,14 +47,14 @@ const PROFILE_VIEWS = [
   { icon: "list", label: "List", value: "list" },
   { icon: "map", label: "Map", value: "map" },
 ];
-const SHEET_EXPANDED_TOP_OFFSET = 72;
+const SHEET_EXPANDED_TOP_OFFSET = 84;
 const SHEET_COLLAPSED_SUMMARY_EXTRA_PADDING = 44;
 const SHEET_COLLAPSED_FALLBACK_VISIBLE_HEIGHT = 220;
 const BOTTOM_NAV_COLLAPSED_OVERLAP = 18;
 const SHEET_CORNER_RADIUS = 34;
 const SHEET_SCREEN_MARGIN = 18;
 const SHEET_TOP_EXTENSION = 80;
-const SHEET_HORIZONTAL_PADDING = 18;
+const SHEET_HORIZONTAL_PADDING = 22;
 const BOTTOM_NAV_RESERVED_HEIGHT = 122;
 const SHEET_EXTRA_BOTTOM_PADDING = 180;
 const PROFILE_COLUMN_GAP = 12;
@@ -156,8 +156,15 @@ function ProfileSectionTabs({ activeSection, onChange, profile }) {
                 isActive && styles.sectionTabCountActive,
               ]}
             >
-              {count}
+              ({count})
             </Text>
+            <View
+              pointerEvents="none"
+              style={[
+                styles.sectionTabIndicator,
+                isActive && styles.sectionTabIndicatorActive,
+              ]}
+            />
           </Pressable>
         );
       })}
@@ -329,6 +336,7 @@ export default function ProfileScreen() {
     saved: "list",
   });
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
+  const [isSheetScrollEnabled, setIsSheetScrollEnabled] = useState(false);
   const [profile, setProfile] = useState(null);
 
   const currentSheetY = useRef(collapsedTop);
@@ -428,6 +436,7 @@ export default function ProfileScreen() {
       scrollOffsetY.current = 0;
       isSheetExpandedRef.current = false;
       setIsSheetExpanded(false);
+      setIsSheetScrollEnabled(false);
       scrollViewRef.current?.scrollTo?.({ animated: false, y: 0 });
       hasInitializedSheet.current = true;
       return;
@@ -453,6 +462,12 @@ export default function ProfileScreen() {
     (destination) => {
       const willExpand = destination === expandedTop;
 
+      isSheetExpandedRef.current = willExpand;
+
+      if (!willExpand) {
+        setIsSheetScrollEnabled(false);
+      }
+
       Animated.spring(sheetY, {
         damping: 24,
         mass: 0.8,
@@ -462,10 +477,11 @@ export default function ProfileScreen() {
       }).start(({ finished }) => {
         if (!finished) return;
 
-        isSheetExpandedRef.current = willExpand;
         setIsSheetExpanded(willExpand);
 
-        if (!willExpand) {
+        if (willExpand) {
+          setIsSheetScrollEnabled(true);
+        } else {
           scrollOffsetY.current = 0;
           scrollViewRef.current?.scrollTo?.({ animated: false, y: 0 });
         }
@@ -497,6 +513,7 @@ export default function ProfileScreen() {
         },
         onPanResponderGrant: () => {
           sheetStartY.current = currentSheetY.current;
+          setIsSheetScrollEnabled(false);
         },
         onPanResponderMove: (_, gestureState) => {
           const nextY = clamp(
@@ -752,14 +769,14 @@ export default function ProfileScreen() {
             scrollOffsetY.current = event.nativeEvent.contentOffset.y;
           }}
           ref={scrollViewRef}
-          scrollEnabled={isSheetExpanded}
+          scrollEnabled={isSheetScrollEnabled}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={styles.sheetScroller}
         >
           <ProfileSummary onLayout={handleSummaryLayout} profile={profile} />
           <Animated.View
-            pointerEvents={isSheetExpanded ? "auto" : "none"}
+            pointerEvents={isSheetScrollEnabled ? "auto" : "none"}
             style={[
               styles.sheetBody,
               {
@@ -835,20 +852,21 @@ const styles = StyleSheet.create({
   },
   sheetContent: {
     paddingHorizontal: SHEET_HORIZONTAL_PADDING,
-    paddingTop: 10,
+    paddingTop: 24,
   },
   sheetBody: {
     flex: 1,
   },
   summary: {
-    gap: 14,
+    gap: 16,
   },
   nameBlock: {
     minWidth: 0,
+    paddingHorizontal: 2,
   },
   name: {
     color: colors.text,
-    fontSize: 28,
+    fontSize: 29,
     fontWeight: "900",
     letterSpacing: 0,
     lineHeight: 32,
@@ -858,59 +876,56 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: 0,
-    marginTop: 4,
+    marginTop: 6,
   },
   statsRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: 12,
+    marginTop: 4,
   },
   stat: {
-    backgroundColor: colors.effects.surfaceOverlay,
-    borderColor: colors.effects.surfaceStrongBorder,
+    alignItems: "flex-start",
+    backgroundColor: "rgba(255, 255, 255, 0.48)",
     borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
-    minHeight: 66,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   statValue: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "900",
-    lineHeight: 24,
+    lineHeight: 26,
   },
   statLabel: {
     color: colors.secondaryText,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0,
-    marginTop: 3,
+    marginTop: 2,
   },
   sectionTabs: {
+    borderBottomColor: "rgba(14, 30, 22, 0.12)",
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
-    gap: 8,
-    marginTop: 34,
+    marginTop: 32,
   },
   sectionTab: {
     alignItems: "center",
-    backgroundColor: colors.effects.surfaceOverlay,
-    borderColor: colors.effects.surfaceStrongBorder,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
-    gap: 4,
     justifyContent: "center",
-    minHeight: 58,
-    paddingHorizontal: 8,
+    minHeight: 54,
+    paddingBottom: 9,
+    paddingHorizontal: 6,
+    position: "relative",
   },
   sectionTabActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: "transparent",
   },
   sectionTabLabel: {
     color: colors.secondaryText,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "900",
     letterSpacing: 0,
   },
@@ -919,22 +934,32 @@ const styles = StyleSheet.create({
   },
   sectionTabCount: {
     color: colors.mutedText,
-    fontSize: 13,
-    fontWeight: "900",
+    fontSize: 12,
+    fontWeight: "800",
     letterSpacing: 0,
+    marginTop: 3,
   },
   sectionTabCountActive: {
     color: colors.text,
   },
+  sectionTabIndicator: {
+    backgroundColor: "transparent",
+    bottom: -StyleSheet.hairlineWidth,
+    height: 4,
+    left: 0,
+    position: "absolute",
+    right: 0,
+  },
+  sectionTabIndicatorActive: {
+    backgroundColor: colors.primary,
+  },
   viewSelector: {
     alignSelf: "flex-start",
-    backgroundColor: colors.effects.surfaceOverlay,
-    borderColor: colors.effects.surfaceStrongBorder,
+    backgroundColor: "rgba(255, 255, 255, 0.46)",
     borderRadius: 21,
-    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     gap: 4,
-    marginTop: 16,
+    marginTop: 18,
     padding: 4,
   },
   viewSelectorButton: {
