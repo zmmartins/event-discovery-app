@@ -505,18 +505,24 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     geometry,
     onCloseComplete,
     onOpen,
+    progressValue,
     screen = "MapScreen",
     source = "map_preview",
   },
   ref
 ) {
   const pathname = usePathname();
-  const progress = useSharedValue(0);
+  const internalProgress = useSharedValue(0);
+  const progress = progressValue ?? internalProgress;
   const finalPreviewImageOpacity = useSharedValue(0);
   const closeReasonRef = useRef(null);
   const isClosingRef = useRef(false);
 
   const layout = getSessionEventPinLayout(event);
+  const collapsedGreenSurfaceInset =
+    layout.circleOffset - layout.greenBorderWidth;
+  const collapsedGreenSurfaceSize =
+    layout.circleSize + layout.greenBorderWidth * 2;
   const attendees = Array.isArray(event.attendingFriends) ? event.attendingFriends : [];
   const finalCardHeight = geometry.cardHeight ?? DEFAULT_CARD_HEIGHT;
   const finalImageSize = geometry.imageSize ?? DEFAULT_IMAGE_SIZE;
@@ -645,13 +651,50 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         [0, 1],
         [PIN_SURFACE_COLOR, CARD_BORDER_COLOR]
       ),
-      borderRadius: interpolate(value, [0, 1], [layout.outerSize / 2, CARD_RADIUS]),
-      height: interpolate(value, [0, 1], [layout.outerSize, finalCardHeight]),
-      left: interpolate(value, [0, 1], [0, 0]),
-      top: interpolate(value, [0, 1], [0, 0]),
-      width: interpolate(value, [0, 1], [layout.outerSize, geometry.width]),
+      borderRadius: interpolate(
+        value,
+        [0, 1],
+        [collapsedGreenSurfaceSize / 2, CARD_RADIUS]
+      ),
+      height: interpolate(
+        value,
+        [0, 1],
+        [collapsedGreenSurfaceSize, finalCardHeight]
+      ),
+      left: interpolate(value, [0, 1], [collapsedGreenSurfaceInset, 0]),
+      top: interpolate(value, [0, 1], [collapsedGreenSurfaceInset, 0]),
+      width: interpolate(
+        value,
+        [0, 1],
+        [collapsedGreenSurfaceSize, geometry.width]
+      ),
     };
-  }, [finalCardHeight, geometry.width, layout.outerSize]);
+  }, [
+    collapsedGreenSurfaceInset,
+    collapsedGreenSurfaceSize,
+    finalCardHeight,
+    geometry.width,
+  ]);
+
+  const friendRingStyle = useAnimatedStyle(() => {
+    const value = progress.value;
+    const thumbnailCenterX = interpolate(
+      value,
+      [0, 1],
+      [layout.outerSize / 2, posterPadding + finalImageSize / 2]
+    );
+    const thumbnailCenterY = interpolate(
+      value,
+      [0, 1],
+      [layout.outerSize / 2, imageTop + finalImageSize / 2]
+    );
+
+    return {
+      left: thumbnailCenterX - layout.outerSize / 2,
+      opacity: interpolate(value, [0, 0.08], [1, 0], Extrapolation.CLAMP),
+      top: thumbnailCenterY - layout.outerSize / 2,
+    };
+  }, [finalImageSize, imageTop, layout.outerSize, posterPadding]);
 
   const thumbnailClipStyle = useAnimatedStyle(() => {
     const value = progress.value;
@@ -712,6 +755,22 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
   return (
     <Animated.View pointerEvents="box-none" style={[styles.container, containerStyle]}>
+      {layout.friendBorderWidth > 0 && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.friendRing,
+            {
+              borderRadius: layout.outerSize / 2,
+              borderWidth: layout.friendBorderWidth,
+              height: layout.outerSize,
+              width: layout.outerSize,
+            },
+            friendRingStyle,
+          ]}
+        />
+      )}
+
       <Animated.View
         onStartShouldSetResponder={() => true}
         style={[styles.surface, surfaceStyle]}
@@ -863,6 +922,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     zIndex: 1,
+  },
+  friendRing: {
+    borderColor: colors.secondary,
+    position: "absolute",
+    zIndex: 0,
   },
   thumbnailClip: {
     position: "absolute",

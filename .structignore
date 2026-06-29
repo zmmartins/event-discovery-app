@@ -1,0 +1,110 @@
+# project-tree ignore rules for this Expo/React Native project.
+# Supports comments, trailing "/" for directories, leading "/" for root paths,
+# and "!" for negation.
+
+# Hidden files and folders, matching list_project_structure.py behavior.
+.*
+
+# Dependencies and generated output.
+node_modules/
+dist/
+build/
+web-build/
+coverage/
+.expo/
+.expo-shared/
+.metro/
+.cache/
+.turbo/
+.parcel-cache/
+.next/
+out/
+/ios/
+/android/
+app-example/
+
+# Python/tooling cache.
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+*.pyc
+*.pyo
+
+# Package manager files.
+package.json
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+bun.lock
+bun.lockb
+
+# App, TypeScript, linting, formatting, and build config.
+app.json
+app.config.js
+app.config.ts
+tsconfig.json
+tsconfig.*.json
+eslint.config.js
+eslint.config.cjs
+eslint.config.mjs
+.eslintrc
+.eslintrc.js
+.eslintrc.cjs
+.eslintrc.json
+.prettierrc
+prettier.config.js
+prettier.config.cjs
+babel.config.js
+metro.config.js
+expo-env.d.ts
+knip.json
+jest.config.js
+jest.config.ts
+vitest.config.js
+vitest.config.ts
+tailwind.config.js
+tailwind.config.ts
+postcss.config.js
+postcss.config.cjs
+
+# Documentation and project metadata hidden by the local tree script.
+README
+README.*
+Dockerfile
+
+# Logs, temp files, and local secrets/certificates.
+*.log
+tmp/
+temp/
+.tmp/
+*.tsbuildinfo
+*.pem
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+.env
+.env.*
+
+# Media/binary assets can grow quickly and make the tree hard to scan.
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.avif
+*.heic
+*.ico
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.ttf
+*.otf

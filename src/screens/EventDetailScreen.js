@@ -46,7 +46,7 @@ const SHEET_HANDLE_HEIGHT = 7;
 const SHEET_HANDLE_TOP_PADDING = 10;
 const SHEET_HANDLE_BOTTOM_PADDING = 18;
 const DETAIL_DESCRIPTION =
-  "Description of a very interesting event that will happen somewhere on the day of next month. All art enthusiasts are invited to this amazing annual event. The entry is free and we welcome you to stay as long as you want. Your only challenge will be that you won't want to leave.";
+  "Prototype event description pending final organizer copy. This space is reserved for the event story, schedule notes, and practical details.";
 
 function wait(milliseconds) {
   return new Promise((resolve) => {
@@ -160,16 +160,42 @@ function RatingDots() {
   );
 }
 
+function getTimePart(dateTime) {
+  return typeof dateTime === "string" && dateTime.length >= 16
+    ? dateTime.slice(11, 16)
+    : "";
+}
+
+function getEventTimeRange(event) {
+  const startTime = event.time || getTimePart(event.startsAt);
+  const endTime = getTimePart(event.endsAt);
+
+  if (startTime && endTime) return `${startTime} - ${endTime}`;
+  if (startTime) return startTime;
+
+  return "Time TBA";
+}
+
 function ReviewCard({ avatarKey }) {
   return (
     <View style={styles.reviewCard}>
       <Avatar avatarKey={avatarKey} size={34} />
       <Text numberOfLines={2} style={styles.reviewText}>
-        Fake review that I wrote just for this
+        Prototype review placeholder for usability testing.
       </Text>
       <RatingDots />
     </View>
   );
+}
+
+function getJoinButtonLabel(event) {
+  if (event.isJoined) return "Going";
+
+  if (event.availability === "sold_out") return "Sold Out";
+  if (event.availability === "canceled") return "Canceled";
+  if (event.availability === "already_happened") return "Past Event";
+
+  return "I'm Going";
 }
 
 export default function EventDetailScreen() {
@@ -257,6 +283,15 @@ export default function EventDetailScreen() {
       }
 
       setIsSheetExpanded(willExpand);
+      if (willExpand !== isSheetExpanded) {
+        logInteraction(LOG_ACTIONS.eventDetailSheetChanged, {
+          eventId: event?.id,
+          result: willExpand ? "expanded" : "collapsed",
+          route: pathname,
+          screen: "EventDetailScreen",
+          source: "detail_sheet",
+        }).catch(() => null);
+      }
       Animated.spring(sheetY, {
         damping: 25,
         mass: 0.75,
@@ -269,7 +304,7 @@ export default function EventDetailScreen() {
         }
       });
     },
-    [expandedY, resetScrollToTop, sheetY]
+    [event?.id, expandedY, isSheetExpanded, pathname, resetScrollToTop, sheetY]
   );
 
   const handlePanResponder = useMemo(
@@ -390,17 +425,44 @@ export default function EventDetailScreen() {
   );
 
   async function handleJoin() {
-    if (!event || event.isJoined) return;
+    if (!event || event.isJoined || !event.canJoin) {
+      if (event && !event.isJoined) {
+        logInteraction(LOG_ACTIONS.participationClicked, {
+          eventId: event.id,
+          reason: event.availability ?? "not_joinable",
+          result: "blocked",
+          route: pathname,
+          screen: "EventDetailScreen",
+          source: "detail_cta",
+        }).catch(() => null);
+      }
+
+      return;
+    }
 
     animateCtaPress();
     triggerDoubleHaptic();
     logInteraction(LOG_ACTIONS.participationClicked, {
       eventId: event.id,
+      result: "requested",
       route: pathname,
       screen: "EventDetailScreen",
       source: "detail_cta",
     }).catch(() => null);
     const updatedEvent = await joinEvent(event.id);
+
+    if (!updatedEvent) {
+      logInteraction(LOG_ACTIONS.participationConfirmed, {
+        eventId: event.id,
+        reason: "join_failed",
+        result: "failed",
+        route: pathname,
+        screen: "EventDetailScreen",
+        source: "detail_cta",
+      }).catch(() => null);
+      return;
+    }
+
     setEvent(updatedEvent);
     setIsSaved(Boolean(updatedEvent?.isSaved));
 
@@ -409,8 +471,18 @@ export default function EventDetailScreen() {
       route: pathname,
       screen: "EventDetailScreen",
       source: "detail_cta",
-      result: "joined",
+      result: updatedEvent.isJoined ? "joined" : "unchanged",
     }).catch(() => null);
+  }
+
+  function handleBackPress() {
+    logInteraction(LOG_ACTIONS.eventDetailBackPressed, {
+      eventId: event?.id,
+      route: pathname,
+      screen: "EventDetailScreen",
+      source: "back_button",
+    }).catch(() => null);
+    router.back();
   }
 
   async function handleSavePress() {
@@ -449,8 +521,10 @@ export default function EventDetailScreen() {
 
   const imageSource = getEventDetailImage(event.thumbnailKey);
   const price = event.price?.toUpperCase?.() ?? "FREE";
-  const timeRange = event.time ? `${event.time} - 00:00` : "00:00 - 00:00";
+  const timeRange = getEventTimeRange(event);
   const statusBarVariant = isSheetExpanded ? "lightBackground" : "image";
+  const joinButtonLabel = getJoinButtonLabel(event);
+  const isJoinButtonDisabled = event.isJoined || !event.canJoin;
 
   return (
     <View style={styles.container}>
@@ -460,7 +534,7 @@ export default function EventDetailScreen() {
       <Pressable
         accessibilityLabel="Go back"
         accessibilityRole="button"
-        onPress={() => router.back()}
+        onPress={handleBackPress}
         style={[styles.backButton, { top: insets.top + BACK_BUTTON_TOP_OFFSET }]}
       >
         <Ionicons name="chevron-back" size={24} color={colors.iconMuted} />
@@ -569,20 +643,18 @@ export default function EventDetailScreen() {
         <Text style={styles.ctaPrice}>{price}</Text>
         <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
           <Pressable
-            accessibilityLabel={event.isJoined ? "Already going" : "Join event"}
+            accessibilityLabel={joinButtonLabel}
             accessibilityRole="button"
-            accessibilityState={{ disabled: event.isJoined }}
-            disabled={event.isJoined}
+            accessibilityState={{ disabled: isJoinButtonDisabled }}
+            disabled={isJoinButtonDisabled}
             onPress={handleJoin}
             style={({ pressed }) => [
               styles.ctaButton,
-              event.isJoined && styles.ctaButtonJoined,
-              pressed && !event.isJoined && styles.pressed,
+              isJoinButtonDisabled && styles.ctaButtonJoined,
+              pressed && !isJoinButtonDisabled && styles.pressed,
             ]}
           >
-            <Text style={styles.ctaButtonText}>
-              {event.isJoined ? "Going" : "I'm Going"}
-            </Text>
+            <Text style={styles.ctaButtonText}>{joinButtonLabel}</Text>
           </Pressable>
         </Animated.View>
       </View>

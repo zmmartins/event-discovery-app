@@ -18,14 +18,11 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import EventCard from "../components/EventCard";
-import ExperiencePin from "../components/ExperiencePin";
 import { getEventPinMarkerAnchor } from "../components/EventPin";
+import ExperiencePin from "../components/ExperiencePin";
 import ProfileExperienceCard from "../components/ProfileExperienceCard";
 import useInteractionLogger from "../hooks/useInteractionLogger";
-import {
-  LOG_ACTIONS,
-  logInteraction,
-} from "../services/interactionLogService";
+import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { getCurrentUserProfile } from "../services/profileService";
 import { colors } from "../theme/colors";
 import { APP_MAP_STYLE } from "../theme/mapStyle";
@@ -143,18 +140,12 @@ function ProfileSectionTabs({ activeSection, onChange, profile }) {
           >
             <Text
               numberOfLines={1}
-              style={[
-                styles.sectionTabLabel,
-                isActive && styles.sectionTabLabelActive,
-              ]}
+              style={[styles.sectionTabLabel, isActive && styles.sectionTabLabelActive]}
             >
               {section.label}
             </Text>
             <Text
-              style={[
-                styles.sectionTabCount,
-                isActive && styles.sectionTabCountActive,
-              ]}
+              style={[styles.sectionTabCount, isActive && styles.sectionTabCountActive]}
             >
               ({count})
             </Text>
@@ -197,10 +188,7 @@ function ProfileViewSelector({ activeView, onChange }) {
               color={isActive ? colors.iconActive : colors.iconMuted}
             />
             <Text
-              style={[
-                styles.viewSelectorText,
-                isActive && styles.viewSelectorTextActive,
-              ]}
+              style={[styles.viewSelectorText, isActive && styles.viewSelectorTextActive]}
             >
               {option.label}
             </Text>
@@ -370,10 +358,7 @@ export default function ProfileScreen() {
   );
   const sheetHeight = useMemo(
     () =>
-      Animated.subtract(
-        screenHeight + SHEET_TOP_EXTENSION - SHEET_SCREEN_MARGIN,
-        sheetY
-      ),
+      Animated.subtract(screenHeight + SHEET_TOP_EXTENSION - SHEET_SCREEN_MARGIN, sheetY),
     [screenHeight, sheetY]
   );
 

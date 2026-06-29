@@ -1,7 +1,6 @@
 {
   "entry": [
     "app/**/*.{js,jsx,ts,tsx}",
-    "app.config.js",
     "app.json",
     "scripts/**/*.{js,cjs,mjs}"
   ],
@@ -10,5 +9,12 @@
     "app/**/*.{js,jsx,ts,tsx}",
     "scripts/**/*.{js,cjs,mjs}"
   ],
-  "ignore": ["src/assets/**"]
+  "ignoreIssues": {
+    "src/data/local/*Repository.js": ["exports"],
+    "src/domain/**/*.js": ["exports"],
+    "src/repositories/*Repository.js": ["exports"],
+    "src/services/*Service.js": ["exports"],
+    "src/theme/*.js": ["exports"],
+    "src/utils/imageAssets.js": ["exports"]
+  }
 }

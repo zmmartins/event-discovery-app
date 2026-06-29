@@ -22,7 +22,11 @@ export const LOG_ACTIONS = {
   eventDetailOpened: "event_detail_opened",
   eventDetailSheetChanged: "event_detail_sheet_changed",
   eventPinSelected: "event_pin_selected",
+  eventPinActionMenuDismissed: "event_pin_action_menu_dismissed",
+  eventPinActionMenuOpened: "event_pin_action_menu_opened",
+  eventPinActionMenuSelected: "event_pin_action_menu_selected",
   eventPreviewDismissed: "event_preview_dismissed",
+  eventShared: "event_shared",
   filterOpened: "filter_opened",
   interactionContextUpdated: "interaction_context_updated",
   listViewOpened: "list_view_opened",
@@ -69,7 +73,11 @@ const ACTION_CATEGORIES = {
   eventDetailOpened: "screen_view",
   eventDetailSheetChanged: "detail_interaction",
   eventPinSelected: "event_discovery",
+  eventPinActionMenuDismissed: "event_discovery",
+  eventPinActionMenuOpened: "event_discovery",
+  eventPinActionMenuSelected: "event_discovery",
   eventPreviewDismissed: "event_discovery",
+  eventShared: "event_state",
   filterOpened: "navigation",
   interactionContextUpdated: "context",
   listViewOpened: "screen_view",
@@ -532,8 +540,8 @@ export async function clearInteractionLogs({ logClear = true } = {}) {
       const context = await ensureContextLoaded();
       const clearLog = buildLog(LOG_ACTIONS.logsCleared, {
         result: "cleared",
-        screen: "LogsScreen",
-        source: "logs_screen",
+        screen: "InteractionLogService",
+        source: "interaction_log_service",
       }, context);
 
       await writeStoredLogs([clearLog]);
@@ -574,8 +582,8 @@ export async function startInteractionTask(taskId) {
 
   await logInteraction(LOG_ACTIONS.taskStarted, {
     result: "started",
-    screen: "LogsScreen",
-    source: "logs_screen",
+    screen: "InteractionLogService",
+    source: "interaction_log_service",
     taskId,
   }).catch(() => null);
 
@@ -588,8 +596,8 @@ export async function finishInteractionTask(result = "finished") {
 
   await logInteraction(LOG_ACTIONS.taskFinished, {
     result,
-    screen: "LogsScreen",
-    source: "logs_screen",
+    screen: "InteractionLogService",
+    source: "interaction_log_service",
     taskId,
   }).catch(() => null);
 
@@ -666,8 +674,8 @@ export async function writeInteractionExportFile(format = "bundle") {
   await logInteraction(LOG_ACTIONS.logExportStarted, {
     format,
     result: "started",
-    screen: "LogsScreen",
-    source: "logs_screen",
+    screen: "InteractionLogService",
+    source: "interaction_log_service",
   }).catch(() => null);
 
   const normalizedFormat = format === "bundle" ? "json" : format;
@@ -691,8 +699,8 @@ export async function writeInteractionExportFile(format = "bundle") {
       fileUri,
       format,
       result: "written",
-      screen: "LogsScreen",
-      source: "logs_screen",
+      screen: "InteractionLogService",
+      source: "interaction_log_service",
     }).catch(() => null);
 
     return {
@@ -706,8 +714,8 @@ export async function writeInteractionExportFile(format = "bundle") {
       format,
       reason: error?.message ?? "write_failed",
       result: "failed",
-      screen: "LogsScreen",
-      source: "logs_screen",
+      screen: "InteractionLogService",
+      source: "interaction_log_service",
     }).catch(() => null);
     throw error;
   }
@@ -730,8 +738,8 @@ export async function shareInteractionExport(format = "bundle") {
       fileUri: exportFile.fileUri,
       format,
       result: "shared",
-      screen: "LogsScreen",
-      source: "logs_screen",
+      screen: "InteractionLogService",
+      source: "interaction_log_service",
     }).catch(() => null);
 
     return exportFile;
@@ -740,8 +748,8 @@ export async function shareInteractionExport(format = "bundle") {
       format,
       reason: error?.message ?? "share_failed",
       result: "failed",
-      screen: "LogsScreen",
-      source: "logs_screen",
+      screen: "InteractionLogService",
+      source: "interaction_log_service",
     }).catch(() => null);
     throw error;
   }

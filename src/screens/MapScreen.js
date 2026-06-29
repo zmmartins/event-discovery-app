@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
+import * as Haptics from "expo-haptics";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import DiscoverModePill from "../components/DiscoverModePill";
@@ -19,10 +20,15 @@ import EventPin, {
   getEventPinMarkerAnchor,
   getSessionEventPinLayout,
 } from "../components/EventPin";
+import EventPinActionMenu, {
+  getEventPinActionLayout,
+  getHoveredPinAction,
+} from "../components/EventPinActionMenu";
 import MorphingEventPreview from "../components/MorphingEventPreview";
+import MorphingPreviewBackdrop from "../components/MorphingPreviewBackdrop";
 import { useDiscoveryMode } from "../context/DiscoveryModeContext";
 import useInteractionLogger from "../hooks/useInteractionLogger";
-import { getEvents } from "../services/eventService";
+import { getEvents, toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { getForegroundUserLocation } from "../services/locationService";
 import { colors } from "../theme/colors";
@@ -53,9 +59,23 @@ const PREVIEW_BASE_CARD_HEIGHT = 520;
 const PREVIEW_MAX_CARD_HEIGHT = 680;
 
 const LOCATION_CENTER_ANIMATION_MS = 700;
-const EVENT_CENTER_ANIMATION_MS = 100;
+const EVENT_CENTER_ANIMATION_MS = 220;
+const EVENT_PREVIEW_FALLBACK_DELAY_MS = EVENT_CENTER_ANIMATION_MS + 140;
 const EVENT_CENTER_TOLERANCE_METERS = 30;
 const USER_CENTER_TOLERANCE_METERS = 80;
+const PIN_ACTION_LONG_PRESS_MS = 360;
+const PIN_ACTION_MENU_DISMISS_MS = 160;
+const PIN_ACTION_TOUCH_TARGET_EXTRA_SIZE = 18;
+
+// Calibration between the native Google Maps custom marker snapshot and the
+// React Native morph overlay. Value is in React Native layout points.
+// Negative Y moves the morph origin upward.
+const PREVIEW_ORIGIN_OFFSET_X = 0;
+const PREVIEW_ORIGIN_OFFSET_Y = Platform.select({
+  ios: -16,
+  android: -16, // test on Android device/emulator; adjust if needed
+  default: -16,
+});
 
 let hasAutoCenteredOnUserThisSession = false;
 let sessionLocationStatus = "idle";
@@ -159,8 +179,8 @@ function getPreviewGeometry({ pinLayout, screenHeight, screenWidth, startPoint }
     posterBottomPadding: PREVIEW_POSTER_BOTTOM_PADDING,
 
     cloneHeight: pinLayout.outerSize,
-    cloneLeft: startPoint.x - pinLayout.outerSize / 2,
-    cloneTop: startPoint.y - pinLayout.outerSize / 2,
+    cloneLeft: startPoint.x + PREVIEW_ORIGIN_OFFSET_X - pinLayout.outerSize / 2,
+    cloneTop: startPoint.y + PREVIEW_ORIGIN_OFFSET_Y - pinLayout.outerSize / 2,
     cloneWidth: pinLayout.outerSize,
 
     height: cardHeight,
@@ -247,12 +267,44 @@ function LocationStatusIndicator({ isCenteredOnUser, onPress, status, top }) {
   );
 }
 
+function getPrimaryTouch(nativeEvent) {
+  return nativeEvent.touches?.[0] ?? nativeEvent.changedTouches?.[0] ?? nativeEvent;
+}
+
+function getContainerTouchPoint(responderEvent, containerOffset) {
+  const touch = getPrimaryTouch(responderEvent.nativeEvent);
+
+  return {
+    x: touch.pageX - containerOffset.x,
+    y: touch.pageY - containerOffset.y,
+  };
+}
+
+function getEventCoordinate(event) {
+  return {
+    latitude: event.latitude,
+    longitude: event.longitude,
+  };
+}
+
+function getValidScreenPoint(point) {
+  if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) return null;
+
+  return {
+    x: point.x,
+    y: point.y,
+  };
+}
+
 export default function MapScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { height: screenHeight, width: screenWidth } = useWindowDimensions();
+  const previewProgress = useSharedValue(0);
 
+  const mapContainerRef = useRef(null);
+  const mapContainerOffsetRef = useRef({ x: 0, y: 0 });
   const mapRef = useRef(null);
   const isMapReadyRef = useRef(false);
   const isRecenteringOnUserRef = useRef(false);
@@ -261,6 +313,12 @@ export default function MapScreen() {
   const pendingInitialLocationRegionRef = useRef(null);
   const pendingPreviewEventRef = useRef(null);
   const eventCenterTimeoutRef = useRef(null);
+  const previewOpenRequestIdRef = useRef(0);
+  const pinActionDismissTimeoutRef = useRef(null);
+  const pinActionGestureRef = useRef(null);
+  const pinActionMenuRef = useRef(null);
+  const pinTouchPointRefreshIdRef = useRef(0);
+  const suppressPinPressRef = useRef(null);
   const isRecenteringOnEventRef = useRef(false);
   const hasDismissedPreviewByGestureRef = useRef(false);
 
@@ -270,6 +328,13 @@ export default function MapScreen() {
     sessionLocationStatus === "idle" ? "locating" : sessionLocationStatus
   );
   const [isMapCenteredOnUser, setIsMapCenteredOnUser] = useState(false);
+  const [mapLayout, setMapLayout] = useState({
+    height: screenHeight,
+    width: screenWidth,
+  });
+  const [hoveredPinAction, setHoveredPinAction] = useState(null);
+  const [eventPinTouchPoints, setEventPinTouchPoints] = useState({});
+  const [pinActionMenu, setPinActionMenu] = useState(null);
   const [previewGeometry, setPreviewGeometry] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [userLocation, setUserLocation] = useState(sessionUserLocation);
@@ -287,6 +352,17 @@ export default function MapScreen() {
         clearTimeout(eventCenterTimeoutRef.current);
         eventCenterTimeoutRef.current = null;
       }
+
+      if (pinActionDismissTimeoutRef.current) {
+        clearTimeout(pinActionDismissTimeoutRef.current);
+        pinActionDismissTimeoutRef.current = null;
+      }
+
+      pinActionGestureRef.current = null;
+      pinActionMenuRef.current = null;
+      pinTouchPointRefreshIdRef.current += 1;
+      previewOpenRequestIdRef.current += 1;
+      suppressPinPressRef.current = null;
     };
   }, []);
 
@@ -308,6 +384,7 @@ export default function MapScreen() {
   const cancelPendingEventPreview = useCallback(() => {
     pendingPreviewEventRef.current = null;
     isRecenteringOnEventRef.current = false;
+    previewOpenRequestIdRef.current += 1;
 
     if (eventCenterTimeoutRef.current) {
       clearTimeout(eventCenterTimeoutRef.current);
@@ -396,6 +473,17 @@ export default function MapScreen() {
       return () => {
         isActive = false;
         cancelPendingEventPreview();
+        if (pinActionDismissTimeoutRef.current) {
+          clearTimeout(pinActionDismissTimeoutRef.current);
+          pinActionDismissTimeoutRef.current = null;
+        }
+        setHoveredPinAction(null);
+        setEventPinTouchPoints({});
+        pinActionGestureRef.current = null;
+        pinActionMenuRef.current = null;
+        pinTouchPointRefreshIdRef.current += 1;
+        suppressPinPressRef.current = null;
+        setPinActionMenu(null);
         setPreviewGeometry(null);
         setSelectedEvent(null);
       };
@@ -494,37 +582,202 @@ export default function MapScreen() {
     currentRegionRef.current = region;
   }, []);
 
-  const openPreviewForEvent = useCallback(
-    async (event) => {
-      const coordinate = {
-        latitude: event.latitude,
-        longitude: event.longitude,
-      };
+  const handleMapLayout = useCallback((layoutEvent) => {
+    const { height, width } = layoutEvent.nativeEvent.layout;
 
-      let startPoint = {
-        x: screenWidth / 2,
-        y: screenHeight / 2,
-      };
+    if (height <= 0 || width <= 0) return;
 
-      try {
-        const nextStartPoint = await mapRef.current?.pointForCoordinate(coordinate);
+    mapContainerRef.current?.measureInWindow?.((x, y) => {
+      mapContainerOffsetRef.current = { x, y };
+    });
 
-        if (Number.isFinite(nextStartPoint?.x) && Number.isFinite(nextStartPoint?.y)) {
-          startPoint = nextStartPoint;
-        }
-      } catch {
-        startPoint = {
-          x: screenWidth / 2,
-          y: screenHeight / 2,
-        };
+    setMapLayout((currentLayout) => {
+      if (currentLayout.height === height && currentLayout.width === width) {
+        return currentLayout;
       }
+
+      return { height, width };
+    });
+  }, []);
+
+  const getViewportDimensions = useCallback(
+    () => ({
+      height: mapLayout.height || screenHeight,
+      width: mapLayout.width || screenWidth,
+    }),
+    [mapLayout.height, mapLayout.width, screenHeight, screenWidth]
+  );
+
+  const getViewportCenterPoint = useCallback(() => {
+    const { height, width } = getViewportDimensions();
+
+    return {
+      x: width / 2,
+      y: height / 2,
+    };
+  }, [getViewportDimensions]);
+
+  const refreshEventPinTouchPoints = useCallback(() => {
+    const map = mapRef.current;
+
+    if (!isMapReadyRef.current || !map || events.length === 0) {
+      setEventPinTouchPoints({});
+      return;
+    }
+
+    const refreshId = pinTouchPointRefreshIdRef.current + 1;
+    pinTouchPointRefreshIdRef.current = refreshId;
+
+    Promise.all(
+      events.map(async (event) => {
+        try {
+          const point = await map.pointForCoordinate(getEventCoordinate(event));
+          const screenPoint = getValidScreenPoint(point);
+
+          return screenPoint ? [event.id, screenPoint] : null;
+        } catch {
+          return null;
+        }
+      })
+    ).then((entries) => {
+      if (pinTouchPointRefreshIdRef.current !== refreshId) return;
+
+      const nextTouchPoints = entries.reduce((points, entry) => {
+        if (!entry) return points;
+
+        const [eventId, point] = entry;
+
+        return {
+          ...points,
+          [eventId]: point,
+        };
+      }, {});
+
+      setEventPinTouchPoints(nextTouchPoints);
+    });
+  }, [events]);
+
+  useEffect(() => {
+    refreshEventPinTouchPoints();
+  }, [mapLayout.height, mapLayout.width, refreshEventPinTouchPoints]);
+
+  const dismissPinActionMenu = useCallback(
+    (reason = "dismissed", { logDismiss = true } = {}) => {
+      const currentMenu = pinActionMenuRef.current;
+
+      if (!currentMenu) return;
+
+      if (pinActionDismissTimeoutRef.current) {
+        clearTimeout(pinActionDismissTimeoutRef.current);
+        pinActionDismissTimeoutRef.current = null;
+      }
+
+      setHoveredPinAction(null);
+      const nextMenu = {
+        ...currentMenu,
+        visible: false,
+      };
+
+      pinActionMenuRef.current = nextMenu;
+      setPinActionMenu(nextMenu);
+
+      if (logDismiss) {
+        logInteraction(LOG_ACTIONS.eventPinActionMenuDismissed, {
+          eventId: currentMenu.event.id,
+          reason,
+          result: "dismissed",
+          route: pathname,
+          screen: "MapScreen",
+          source: "pin_action_menu",
+        }).catch(() => null);
+      }
+
+      pinActionDismissTimeoutRef.current = setTimeout(() => {
+        pinActionMenuRef.current = null;
+        setPinActionMenu(null);
+        pinActionDismissTimeoutRef.current = null;
+      }, PIN_ACTION_MENU_DISMISS_MS);
+    },
+    [pathname]
+  );
+
+  const openPinActionMenu = useCallback(
+    (event, origin) => {
+      const safeOrigin = getValidScreenPoint(origin);
+
+      if (!safeOrigin) return null;
+
+      const { height, width } = getViewportDimensions();
+      const layout = getEventPinActionLayout({
+        origin: safeOrigin,
+        otherPinPoints: [],
+        screenHeight: height,
+        screenWidth: width,
+      });
+
+      cancelPendingEventPreview();
+
+      if (selectedEvent) {
+        closePreview("pin_action_menu");
+      }
+
+      if (pinActionDismissTimeoutRef.current) {
+        clearTimeout(pinActionDismissTimeoutRef.current);
+        pinActionDismissTimeoutRef.current = null;
+      }
+
+      setHoveredPinAction(null);
+      const nextMenu = {
+        event,
+        layout,
+        origin: safeOrigin,
+        visible: true,
+      };
+
+      pinActionMenuRef.current = nextMenu;
+      setPinActionMenu(nextMenu);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => null);
+      logInteraction(LOG_ACTIONS.eventPinActionMenuOpened, {
+        eventId: event.id,
+        route: pathname,
+        screen: "MapScreen",
+        source: "map_pin_long_press",
+      }).catch(() => null);
+
+      return layout;
+    },
+    [
+      cancelPendingEventPreview,
+      closePreview,
+      getViewportDimensions,
+      pathname,
+      selectedEvent,
+    ]
+  );
+
+  const handlePinActionHoverChange = useCallback((nextAction) => {
+    setHoveredPinAction((currentAction) => {
+      if (currentAction === nextAction) return currentAction;
+
+      if (nextAction) {
+        Haptics.selectionAsync().catch(() => null);
+      }
+
+      return nextAction;
+    });
+  }, []);
+
+  const openPreviewForEvent = useCallback(
+    (event) => {
+      const { height: viewportHeight, width: viewportWidth } = getViewportDimensions();
+      const startPoint = getViewportCenterPoint();
 
       const pinLayout = getSessionEventPinLayout(event);
       const nextPreviewGeometry = getPreviewGeometry({
         event,
         pinLayout,
-        screenHeight,
-        screenWidth,
+        screenHeight: viewportHeight,
+        screenWidth: viewportWidth,
         startPoint,
       });
 
@@ -535,7 +788,7 @@ export default function MapScreen() {
         isRegionCenteredOnCoordinate(currentRegionRef.current, userLocation)
       );
     },
-    [screenHeight, screenWidth, userLocation]
+    [getViewportCenterPoint, getViewportDimensions, userLocation]
   );
 
   const handleRegionChangeComplete = useCallback(
@@ -567,11 +820,13 @@ export default function MapScreen() {
 
           pendingPreviewEventRef.current = null;
           isRecenteringOnEventRef.current = false;
+          refreshEventPinTouchPoints();
           openPreviewForEvent(pendingPreviewEvent);
           return;
         }
       }
 
+      refreshEventPinTouchPoints();
       const isCenteredOnUser = isRegionCenteredOnCoordinate(region, userLocation);
 
       if (isCenteredOnUser) {
@@ -581,7 +836,7 @@ export default function MapScreen() {
         setIsMapCenteredOnUser(false);
       }
     },
-    [openPreviewForEvent, userLocation]
+    [openPreviewForEvent, refreshEventPinTouchPoints, userLocation]
   );
 
   const handleMapReady = useCallback(() => {
@@ -595,32 +850,36 @@ export default function MapScreen() {
       pendingInitialLocationRegionRef.current = null;
       return;
     }
-  }, []);
+
+    refreshEventPinTouchPoints();
+  }, [refreshEventPinTouchPoints]);
 
   const handleMapPress = useCallback(() => {
     cancelPendingEventPreview();
+    dismissPinActionMenu("map_press");
 
     if (selectedEvent) {
       closePreview("map_press");
     }
-  }, [cancelPendingEventPreview, closePreview, selectedEvent]);
+  }, [cancelPendingEventPreview, closePreview, dismissPinActionMenu, selectedEvent]);
 
   const handleMapPanDrag = useCallback(() => {
     cancelPendingEventPreview();
+    dismissPinActionMenu("map_pan");
     isRecenteringOnUserRef.current = false;
     setIsMapCenteredOnUser(false);
 
     if (selectedEvent) {
       closePreview("map_pan");
     }
-  }, [cancelPendingEventPreview, closePreview, selectedEvent]);
+  }, [cancelPendingEventPreview, closePreview, dismissPinActionMenu, selectedEvent]);
 
   const handlePinPress = useCallback(
-    async (event) => {
-      const coordinate = {
-        latitude: event.latitude,
-        longitude: event.longitude,
-      };
+    (event) => {
+      dismissPinActionMenu("pin_tap", { logDismiss: false });
+      previewOpenRequestIdRef.current += 1;
+      const previewRequestId = previewOpenRequestIdRef.current;
+      const coordinate = getEventCoordinate(event);
 
       if (selectedEvent) {
         setPreviewGeometry(null);
@@ -660,9 +919,12 @@ export default function MapScreen() {
           const pendingEvent = pendingPreviewEventRef.current;
           pendingPreviewEventRef.current = null;
           isRecenteringOnEventRef.current = false;
-          openPreviewForEvent(pendingEvent);
+
+          if (previewOpenRequestIdRef.current === previewRequestId) {
+            openPreviewForEvent(pendingEvent);
+          }
         }
-      }, EVENT_CENTER_ANIMATION_MS);
+      }, EVENT_PREVIEW_FALLBACK_DELAY_MS);
 
       logInteraction(LOG_ACTIONS.eventPinSelected, {
         eventId: event.id,
@@ -671,7 +933,79 @@ export default function MapScreen() {
         source: "map_pin",
       }).catch(() => null);
     },
-    [openPreviewForEvent, pathname, selectedEvent]
+    [dismissPinActionMenu, openPreviewForEvent, pathname, selectedEvent]
+  );
+
+  const handlePinActionSelect = useCallback(
+    async (event, action, reason = "release_outside") => {
+      if (!action) {
+        dismissPinActionMenu(reason);
+        return;
+      }
+
+      dismissPinActionMenu(`selected_${action}`, { logDismiss: false });
+      Haptics.selectionAsync().catch(() => null);
+      logInteraction(LOG_ACTIONS.eventPinActionMenuSelected, {
+        eventId: event.id,
+        result: action,
+        route: pathname,
+        screen: "MapScreen",
+        source: "pin_action_menu",
+      }).catch(() => null);
+
+      if (action === "expand") {
+        handlePinPress(event);
+        return;
+      }
+
+      if (action === "share") {
+        logInteraction(LOG_ACTIONS.eventShared, {
+          eventId: event.id,
+          reason: "share_not_implemented",
+          result: "placeholder",
+          route: pathname,
+          screen: "MapScreen",
+          source: "pin_action_menu",
+        }).catch(() => null);
+        return;
+      }
+
+      if (action === "save") {
+        try {
+          const updatedEvent = await toggleSavedEvent(event.id);
+
+          if (!updatedEvent) return;
+
+          setEvents((currentEvents) =>
+            currentEvents.map((currentEvent) =>
+              currentEvent.id === updatedEvent.id ? updatedEvent : currentEvent
+            )
+          );
+          setSelectedEvent((currentSelectedEvent) =>
+            currentSelectedEvent?.id === updatedEvent.id
+              ? updatedEvent
+              : currentSelectedEvent
+          );
+          logInteraction(LOG_ACTIONS.eventBookmarkToggled, {
+            eventId: event.id,
+            isSaved: Boolean(updatedEvent.isSaved),
+            route: pathname,
+            screen: "MapScreen",
+            source: "pin_action_menu",
+          }).catch(() => null);
+        } catch {
+          logInteraction(LOG_ACTIONS.eventBookmarkToggled, {
+            eventId: event.id,
+            reason: "toggle_failed",
+            result: "failed",
+            route: pathname,
+            screen: "MapScreen",
+            source: "pin_action_menu",
+          }).catch(() => null);
+        }
+      }
+    },
+    [dismissPinActionMenu, handlePinPress, pathname]
   );
 
   const handleMarkerPress = useCallback(
@@ -680,6 +1014,78 @@ export default function MapScreen() {
       handlePinPress(event);
     },
     [handlePinPress]
+  );
+
+  const handlePinTouchPress = useCallback(
+    (event) => {
+      if (suppressPinPressRef.current === event.id) {
+        suppressPinPressRef.current = null;
+        return;
+      }
+
+      if (pinActionGestureRef.current?.event?.id === event.id) return;
+
+      handlePinPress(event);
+    },
+    [handlePinPress]
+  );
+
+  const handlePinTouchLongPress = useCallback(
+    (event, origin) => {
+      suppressPinPressRef.current = event.id;
+
+      const layout = openPinActionMenu(event, origin);
+
+      if (!layout) return;
+
+      pinActionGestureRef.current = {
+        event,
+        hoveredAction: null,
+        layout,
+      };
+    },
+    [openPinActionMenu]
+  );
+
+  const handlePinTouchMove = useCallback(
+    (responderEvent, event) => {
+      const currentGesture = pinActionGestureRef.current;
+
+      if (currentGesture?.event?.id !== event.id) return;
+
+      const point = getContainerTouchPoint(responderEvent, mapContainerOffsetRef.current);
+      const nextHoveredAction = getHoveredPinAction(point, currentGesture.layout);
+
+      if (nextHoveredAction === currentGesture.hoveredAction) return;
+
+      currentGesture.hoveredAction = nextHoveredAction;
+      handlePinActionHoverChange(nextHoveredAction);
+    },
+    [handlePinActionHoverChange]
+  );
+
+  const handlePinTouchPressOut = useCallback(
+    (responderEvent, event) => {
+      const currentGesture = pinActionGestureRef.current;
+
+      if (currentGesture?.event?.id !== event.id) return;
+
+      const releasePoint = getContainerTouchPoint(
+        responderEvent,
+        mapContainerOffsetRef.current
+      );
+      const selectedAction = getHoveredPinAction(releasePoint, currentGesture.layout);
+
+      pinActionGestureRef.current = null;
+      handlePinActionSelect(event, selectedAction);
+
+      requestAnimationFrame(() => {
+        if (suppressPinPressRef.current === event.id) {
+          suppressPinPressRef.current = null;
+        }
+      });
+    },
+    [handlePinActionSelect]
   );
 
   const openSelectedEvent = useCallback(() => {
@@ -756,9 +1162,16 @@ export default function MapScreen() {
   ]);
 
   const shouldShowLocationStatus = !(selectedEvent && previewGeometry);
+  const { height: viewportHeight, width: viewportWidth } = getViewportDimensions();
+  const pinPressRetentionOffset = {
+    bottom: viewportHeight,
+    left: viewportWidth,
+    right: viewportWidth,
+    top: viewportHeight,
+  };
 
   return (
-    <View style={styles.container}>
+    <View ref={mapContainerRef} onLayout={handleMapLayout} style={styles.container}>
       <MapView
         customMapStyle={APP_MAP_STYLE}
         initialRegion={LISBON_REGION}
@@ -790,10 +1203,7 @@ export default function MapScreen() {
           return (
             <Marker
               anchor={getEventPinMarkerAnchor(event)}
-              coordinate={{
-                latitude: event.latitude,
-                longitude: event.longitude,
-              }}
+              coordinate={getEventCoordinate(event)}
               key={event.id}
               onPress={(markerEvent) => handleMarkerPress(markerEvent, event)}
               tracksViewChanges={!hasLoadedPinImage}
@@ -826,17 +1236,61 @@ export default function MapScreen() {
         )}
       </MapView>
 
+      <View pointerEvents="box-none" style={styles.eventPinTouchLayer}>
+        {events.map((event) => {
+          const origin = eventPinTouchPoints[event.id];
+
+          if (!origin) return null;
+
+          const pinLayout = getSessionEventPinLayout(event);
+          const touchSize = pinLayout.outerSize + PIN_ACTION_TOUCH_TARGET_EXTRA_SIZE;
+
+          return (
+            <Pressable
+              accessibilityLabel={`${event.title ?? "Event"} map pin`}
+              accessibilityRole="button"
+              delayLongPress={PIN_ACTION_LONG_PRESS_MS}
+              key={`pin-touch-${event.id}`}
+              onLongPress={() => handlePinTouchLongPress(event, origin)}
+              onPress={() => handlePinTouchPress(event)}
+              onPressMove={(responderEvent) => handlePinTouchMove(responderEvent, event)}
+              onPressOut={(responderEvent) =>
+                handlePinTouchPressOut(responderEvent, event)
+              }
+              pressRetentionOffset={pinPressRetentionOffset}
+              style={[
+                styles.eventPinTouchTarget,
+                {
+                  borderRadius: touchSize / 2,
+                  height: touchSize,
+                  left: origin.x - touchSize / 2,
+                  top: origin.y - touchSize / 2,
+                  width: touchSize,
+                  zIndex: getEventPinZIndex(event),
+                },
+              ]}
+            />
+          );
+        })}
+      </View>
+
       {selectedEvent && previewGeometry && (
-        <Pressable
-          accessibilityLabel="Close event preview"
-          accessibilityRole="button"
+        <MorphingPreviewBackdrop
           onPress={() => dismissPreviewFromOverlayGesture("map_press")}
           onTouchMove={() => dismissPreviewFromOverlayGesture("map_pan")}
-          style={styles.previewDismissOverlay}
-        >
-          <BlurView intensity={10} tint="light" style={StyleSheet.absoluteFill} />
-          <View pointerEvents="none" style={styles.previewDimOverlay} />
-        </Pressable>
+          progressValue={previewProgress}
+        />
+      )}
+
+      {pinActionMenu && (
+        <EventPinActionMenu
+          event={pinActionMenu.event}
+          hoveredAction={hoveredPinAction}
+          origin={pinActionMenu.origin}
+          screenHeight={viewportHeight}
+          screenWidth={viewportWidth}
+          visible={pinActionMenu.visible}
+        />
       )}
 
       {shouldShowLocationStatus && (
@@ -876,6 +1330,7 @@ export default function MapScreen() {
           onCloseComplete={handlePreviewCloseComplete}
           onOpen={openSelectedEvent}
           onSavedChange={handlePreviewSavedChange}
+          progressValue={previewProgress}
           ref={morphPreviewRef}
           screen="MapScreen"
           source="map_preview"
@@ -893,13 +1348,13 @@ const styles = StyleSheet.create({
   map: {
     ...StyleSheet.absoluteFillObject,
   },
-  previewDismissOverlay: {
+  eventPinTouchLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1,
   },
-  previewDimOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+  eventPinTouchTarget: {
+    backgroundColor: "transparent",
+    position: "absolute",
   },
   locationStatus: {
     position: "absolute",

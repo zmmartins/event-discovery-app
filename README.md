@@ -82,6 +82,7 @@ Out of scope for the current academic prototype:
 - Expo Blur
 - Expo Glass Effect
 - Expo FileSystem and Sharing
+- Expo System UI
 - Expo Updates
 - AsyncStorage
 - React Native Reanimated
@@ -119,8 +120,18 @@ npm run unused
 `src/assets/events`.
 
 `npm run unused` runs Knip using `knip.json`. Treat it as an audit tool; the app
-currently keeps some compatibility exports around service/repository/theme/image
-helpers.
+keeps service, repository, domain, theme, and image-helper exports as intentional
+API boundaries, so `knip.json` ignores unused-export reports for those boundary
+files while still reporting other unused-code/dependency issues.
+
+Repository-structure helpers:
+
+- `.structignore` configures the local `project-tree` command so tree output
+  stays focused on source files as generated assets, native folders, caches, and
+  tooling files grow.
+- `list_project_structure.py` is a standalone legacy tree printer with hardcoded
+  ignores. It does not read `.structignore`; use `project-tree` for the
+  configurable project-structure output.
 
 The `web` script exists because this is an Expo project, but the current app is
 not web-ready. The route graph imports `react-native-maps`, so use iOS or
@@ -138,11 +149,6 @@ server:
 ```bash
 npx expo start --tunnel
 ```
-
-Current script caveat: `package.json` still contains `npm run reset-project`, but
-`scripts/reset-project.js` is not present in this repository. Do not treat that
-script as a supported workflow until the script is restored or the package entry
-is removed.
 
 ### Known Local Startup Issue
 
@@ -179,12 +185,9 @@ GOOGLE_MAPS_ANDROID_API_KEY=...
 The app falls back to a default Lisbon region when user location is unavailable
 or permission is denied.
 
-Known config cleanup before production-style builds:
-
-- `app.json` references icon/splash files under `assets/images`, but that
-  directory currently has no committed image files.
-- `app.json` currently has a malformed `u<serInterfaceStyle` key, so it is not
-  setting Expo's `userInterfaceStyle` option.
+`app.json` sets Expo's `userInterfaceStyle` to `light` and references the
+committed app icon, Android adaptive icon, splash icon, and favicon assets under
+`assets/images`.
 
 ## Routing
 
@@ -244,8 +247,10 @@ Event details read the route parameter with `useLocalSearchParams()`.
 ## Project Structure
 
 ```text
+.structignore                 Ignore rules for the local project-tree command
 app/                         File-based Expo Router routes
-assets/images/               Static Expo icon/splash target directory, currently empty
+assets/images/               Static Expo icon, splash, adaptive icon, and favicon assets
+list_project_structure.py     Standalone hardcoded project tree printer
 scripts/                     Local maintenance scripts
 src/assets/avatars/          Mock avatar images
 src/assets/events/           Source mock event images
@@ -284,6 +289,7 @@ Core components:
 - `DiscoverModePill.js`
 - `EventCard.js`
 - `EventPin.js`
+- `EventPinActionMenu.js`
 - `MorphingEventPreview.js`
 - `ExperiencePin.js`
 - `ProfileExperienceCard.js`
