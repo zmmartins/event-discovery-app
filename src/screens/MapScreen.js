@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -66,6 +66,8 @@ const USER_CENTER_TOLERANCE_METERS = 80;
 const PIN_ACTION_LONG_PRESS_MS = 360;
 const PIN_ACTION_MENU_DISMISS_MS = 160;
 const PIN_ACTION_TOUCH_TARGET_EXTRA_SIZE = 18;
+const PIN_ACTION_TOP_CHROME_HEIGHT = 132;
+const PIN_ACTION_BOTTOM_CHROME_HEIGHT = 128;
 
 // Calibration between the native Google Maps custom marker snapshot and the
 // React Native morph overlay. Value is in React Native layout points.
@@ -661,6 +663,16 @@ export default function MapScreen() {
     refreshEventPinTouchPoints();
   }, [mapLayout.height, mapLayout.width, refreshEventPinTouchPoints]);
 
+  const pinActionAvoidanceInsets = useMemo(
+    () => ({
+      bottom: insets.bottom + PIN_ACTION_BOTTOM_CHROME_HEIGHT,
+      left: insets.left,
+      right: insets.right,
+      top: insets.top + PIN_ACTION_TOP_CHROME_HEIGHT,
+    }),
+    [insets.bottom, insets.left, insets.right, insets.top]
+  );
+
   const dismissPinActionMenu = useCallback(
     (reason = "dismissed", { logDismiss = true } = {}) => {
       const currentMenu = pinActionMenuRef.current;
@@ -709,6 +721,7 @@ export default function MapScreen() {
 
       const { height, width } = getViewportDimensions();
       const layout = getEventPinActionLayout({
+        avoidanceInsets: pinActionAvoidanceInsets,
         origin: safeOrigin,
         otherPinPoints: [],
         screenHeight: height,
@@ -751,6 +764,7 @@ export default function MapScreen() {
       closePreview,
       getViewportDimensions,
       pathname,
+      pinActionAvoidanceInsets,
       selectedEvent,
     ]
   );
@@ -1074,7 +1088,9 @@ export default function MapScreen() {
         responderEvent,
         mapContainerOffsetRef.current
       );
-      const selectedAction = getHoveredPinAction(releasePoint, currentGesture.layout);
+      const selectedAction =
+        currentGesture.hoveredAction ??
+        getHoveredPinAction(releasePoint, currentGesture.layout);
 
       pinActionGestureRef.current = null;
       handlePinActionSelect(event, selectedAction);
@@ -1284,6 +1300,7 @@ export default function MapScreen() {
 
       {pinActionMenu && (
         <EventPinActionMenu
+          avoidanceInsets={pinActionAvoidanceInsets}
           event={pinActionMenu.event}
           hoveredAction={hoveredPinAction}
           origin={pinActionMenu.origin}

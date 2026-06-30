@@ -10,7 +10,6 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -68,8 +67,6 @@ const CARD_SURFACE_COLOR = colors.primary;
 const CARD_BORDER_COLOR = colors.primary;
 const IMAGE_BORDER_WIDTH = StyleSheet.hairlineWidth;
 const IMAGE_BORDER_COLOR = colors.primary;
-const FINAL_PREVIEW_IMAGE_DELAY_MS = 420;
-const FINAL_PREVIEW_IMAGE_FADE_MS = 110;
 
 const ACTION_BACKGROUND_COLOR = colors.text;
 const ACTION_TEXT_COLOR = colors.surface;
@@ -514,15 +511,12 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
   const pathname = usePathname();
   const internalProgress = useSharedValue(0);
   const progress = progressValue ?? internalProgress;
-  const finalPreviewImageOpacity = useSharedValue(0);
   const closeReasonRef = useRef(null);
   const isClosingRef = useRef(false);
 
   const layout = getSessionEventPinLayout(event);
-  const collapsedGreenSurfaceInset =
-    layout.circleOffset - layout.greenBorderWidth;
-  const collapsedGreenSurfaceSize =
-    layout.circleSize + layout.greenBorderWidth * 2;
+  const collapsedGreenSurfaceInset = layout.circleOffset - layout.greenBorderWidth;
+  const collapsedGreenSurfaceSize = layout.circleSize + layout.greenBorderWidth * 2;
   const attendees = Array.isArray(event.attendingFriends) ? event.attendingFriends : [];
   const finalCardHeight = geometry.cardHeight ?? DEFAULT_CARD_HEIGHT;
   const finalImageSize = geometry.imageSize ?? DEFAULT_IMAGE_SIZE;
@@ -571,21 +565,13 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
   useEffect(() => {
     isClosingRef.current = false;
-    finalPreviewImageOpacity.value = 0;
     progress.value = 0;
     progress.value = withSpring(1, {
       damping: 18,
       mass: 0.75,
       stiffness: 190,
     });
-    finalPreviewImageOpacity.value = withDelay(
-      FINAL_PREVIEW_IMAGE_DELAY_MS,
-      withTiming(1, {
-        duration: FINAL_PREVIEW_IMAGE_FADE_MS,
-        easing: Easing.out(Easing.cubic),
-      })
-    );
-  }, [event.id, finalPreviewImageOpacity, progress]);
+  }, [event.id, progress]);
 
   const finishClose = useCallback(() => {
     isClosingRef.current = false;
@@ -598,10 +584,6 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
       isClosingRef.current = true;
       closeReasonRef.current = reason;
-      finalPreviewImageOpacity.value = withTiming(0, {
-        duration: 90,
-        easing: Easing.out(Easing.cubic),
-      });
       progress.value = withTiming(
         0,
         {
@@ -615,7 +597,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         }
       );
     },
-    [finalPreviewImageOpacity, finishClose, progress]
+    [finishClose, progress]
   );
 
   useImperativeHandle(
@@ -656,18 +638,10 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
         [0, 1],
         [collapsedGreenSurfaceSize / 2, CARD_RADIUS]
       ),
-      height: interpolate(
-        value,
-        [0, 1],
-        [collapsedGreenSurfaceSize, finalCardHeight]
-      ),
+      height: interpolate(value, [0, 1], [collapsedGreenSurfaceSize, finalCardHeight]),
       left: interpolate(value, [0, 1], [collapsedGreenSurfaceInset, 0]),
       top: interpolate(value, [0, 1], [collapsedGreenSurfaceInset, 0]),
-      width: interpolate(
-        value,
-        [0, 1],
-        [collapsedGreenSurfaceSize, geometry.width]
-      ),
+      width: interpolate(value, [0, 1], [collapsedGreenSurfaceSize, geometry.width]),
     };
   }, [
     collapsedGreenSurfaceInset,
@@ -725,23 +699,43 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     };
   }, [finalImageSize, imageTop, layout.circleOffset, layout.circleSize, posterPadding]);
 
-  const finalPreviewImageStyle = useAnimatedStyle(() => ({
-    opacity: finalPreviewImageOpacity.value,
+  const lowResolutionImageStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.8, 0.86], [1, 1, 0], Extrapolation.CLAMP),
   }));
 
-  const posterContentStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      progress.value,
-      [0.42, 0.72, 1],
-      [0, 0.45, 1],
-      Extrapolation.CLAMP
-    ),
-    transform: [
-      {
-        translateY: interpolate(progress.value, [0.42, 1], [8, 0], Extrapolation.CLAMP),
-      },
-    ],
+  const highResolutionImageStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.9, 0.96], [0, 0, 1], Extrapolation.CLAMP),
   }));
+
+  const posterContentStyle = useAnimatedStyle(() => {
+    const value = progress.value;
+    const collapsedCenter = layout.outerSize / 2;
+
+    return {
+      opacity: interpolate(value, [0.42, 0.72, 1], [0, 0.45, 1], Extrapolation.CLAMP),
+      transform: [
+        {
+          translateX: interpolate(
+            value,
+            [0, 1],
+            [collapsedCenter - geometry.width / 2, 0],
+            Extrapolation.CLAMP
+          ),
+        },
+        {
+          translateY: interpolate(
+            value,
+            [0, 1],
+            [collapsedCenter - finalCardHeight / 2, 0],
+            Extrapolation.CLAMP
+          ),
+        },
+        {
+          scale: interpolate(value, [0, 0.42, 1], [0.12, 0.12, 1], Extrapolation.CLAMP),
+        },
+      ],
+    };
+  }, [finalCardHeight, geometry.width, layout.outerSize]);
 
   function handleOpenPress() {
     logInteraction(LOG_ACTIONS.eventCardPressed, {
@@ -786,7 +780,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
           accessibilityLabel={`${title} thumbnail transition`}
           resizeMode="cover"
           source={pinImageSource}
-          style={styles.thumbnail}
+          style={[styles.thumbnail, lowResolutionImageStyle]}
         />
       </Animated.View>
 
@@ -800,7 +794,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
             top: imageTop,
             width: finalImageSize,
           },
-          finalPreviewImageStyle,
+          highResolutionImageStyle,
         ]}
       >
         <Image
@@ -813,7 +807,14 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
       <Animated.View
         pointerEvents="box-none"
-        style={[styles.posterContent, posterContentStyle]}
+        style={[
+          styles.posterContent,
+          {
+            height: finalCardHeight,
+            width: geometry.width,
+          },
+          posterContentStyle,
+        ]}
       >
         <View
           style={[
@@ -949,7 +950,9 @@ const styles = StyleSheet.create({
     opacity: 0.72,
   },
   posterContent: {
-    ...StyleSheet.absoluteFillObject,
+    left: 0,
+    position: "absolute",
+    top: 0,
     zIndex: 6,
   },
   posterHeader: {

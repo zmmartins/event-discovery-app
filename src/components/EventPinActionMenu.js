@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useEffect, useMemo, useRef } from "react";
-import { Animated, Platform, StyleSheet, View } from "react-native";
+import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
 
 import { colors } from "../theme/colors";
 import {
@@ -10,31 +10,42 @@ import {
   LIQUID_GLASS_EFFECT_STYLE,
   LIQUID_GLASS_TINT_COLOR,
 } from "../theme/liquidGlass";
+import EventPin, { getSessionEventPinLayout } from "./EventPin";
 
-const PIN_ACTION_BUTTON_SIZE = 54;
-const PIN_ACTION_RADIUS = 84;
-const PIN_ACTION_HIT_RADIUS = 34;
+const PIN_ACTION_BUTTON_SIZE = 64;
+const PIN_ACTION_RADIUS = 108;
+const PIN_ACTION_HIT_RADIUS = 46;
 
 const EDGE_PADDING = 12;
 const NEARBY_PIN_CLEARANCE = PIN_ACTION_BUTTON_SIZE + 18;
-const FAN_ANGLE_OFFSET = 32;
-const CANDIDATE_BASE_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
+const FAN_ANGLE_OFFSET = 38;
+const HOVERED_ACTION_SCALE = 1.22;
+const HOVERED_ACTION_EXTRA_DISTANCE = 18;
+const HOVER_ANIMATION_MS = 110;
+const CANDIDATE_BASE_ANGLES = [270, 225, 315, 180, 0, 135, 45, 90];
+const UPWARD_PREFERRED_ANGLE = 270;
+const UPWARD_BASE_BONUS = 220;
+const UPWARD_CENTER_BONUS = 40;
+const DOWNWARD_CENTER_PENALTY = 180;
 
 const PIN_ACTIONS = [
   {
     id: "expand",
     accessibilityLabel: "Expand event",
     icon: "expand-outline",
+    label: "Expandir",
   },
   {
     id: "share",
     accessibilityLabel: "Share event",
     icon: "share-outline",
+    label: "Partilhar",
   },
   {
     id: "save",
     accessibilityLabel: "Save event",
     icon: "bookmark-outline",
+    label: "Guardar",
     savedIcon: "bookmark",
   },
 ];
@@ -61,6 +72,10 @@ function getDistance(firstPoint, secondPoint) {
   return Math.hypot(firstPoint.x - secondPoint.x, firstPoint.y - secondPoint.y);
 }
 
+function getAngleDistance(firstAngle, secondAngle) {
+  return Math.abs(((firstAngle - secondAngle + 540) % 360) - 180);
+}
+
 function getPointFromAngle(origin, degrees, radius) {
   const radians = toRadians(degrees);
 
@@ -70,24 +85,56 @@ function getPointFromAngle(origin, degrees, radius) {
   };
 }
 
-function getBorderDistance(point, screenWidth, screenHeight) {
+function normalizeAvoidanceInsets(avoidanceInsets = {}) {
+  return {
+    bottom: Math.max(Number(avoidanceInsets.bottom) || 0, 0),
+    left: Math.max(Number(avoidanceInsets.left) || 0, 0),
+    right: Math.max(Number(avoidanceInsets.right) || 0, 0),
+    top: Math.max(Number(avoidanceInsets.top) || 0, 0),
+  };
+}
+
+function getAvailableAreaDistance(
+  point,
+  { avoidanceInsets, screenHeight, screenWidth }
+) {
+  const safeInsets = normalizeAvoidanceInsets(avoidanceInsets);
   const minDistance = PIN_ACTION_BUTTON_SIZE / 2 + EDGE_PADDING;
 
+  const minX = safeInsets.left + minDistance;
+  const minY = safeInsets.top + minDistance;
+  const maxX = screenWidth - safeInsets.right - minDistance;
+  const maxY = screenHeight - safeInsets.bottom - minDistance;
+
   return Math.min(
-    point.x - minDistance,
-    point.y - minDistance,
-    screenWidth - minDistance - point.x,
-    screenHeight - minDistance - point.y
+    point.x - minX,
+    point.y - minY,
+    maxX - point.x,
+    maxY - point.y
   );
 }
 
-function getCandidateScore(centers, { otherPinPoints, screenHeight, screenWidth }) {
-  return centers.reduce((score, center) => {
-    const borderDistance = getBorderDistance(center, screenWidth, screenHeight);
-    let nextScore = score + borderDistance;
+function getCandidateScore(
+  centers,
+  {
+    avoidanceInsets,
+    baseAngle,
+    origin,
+    otherPinPoints,
+    screenHeight,
+    screenWidth,
+  }
+) {
+  let score = centers.reduce((currentScore, center) => {
+    const availableAreaDistance = getAvailableAreaDistance(center, {
+      avoidanceInsets,
+      screenHeight,
+      screenWidth,
+    });
+    let nextScore = currentScore + availableAreaDistance;
 
-    if (borderDistance < 0) {
-      nextScore += borderDistance * 1000;
+    if (availableAreaDistance < 0) {
+      nextScore += availableAreaDistance * 1200;
     }
 
     otherPinPoints.forEach((pinPoint) => {
@@ -100,9 +147,25 @@ function getCandidateScore(centers, { otherPinPoints, screenHeight, screenWidth 
 
     return nextScore;
   }, 0);
+
+  const angleDistanceFromUp = getAngleDistance(baseAngle, UPWARD_PREFERRED_ANGLE);
+  score += Math.max(0, UPWARD_BASE_BONUS - angleDistanceFromUp * 2);
+
+  centers.forEach((center) => {
+    const verticalDelta = center.y - origin.y;
+
+    if (verticalDelta < 0) {
+      score += UPWARD_CENTER_BONUS;
+    } else {
+      score -= DOWNWARD_CENTER_PENALTY;
+    }
+  });
+
+  return score;
 }
 
 export function getEventPinActionLayout({
+  avoidanceInsets = {},
   origin,
   otherPinPoints = [],
   screenHeight,
@@ -111,6 +174,7 @@ export function getEventPinActionLayout({
   const safeOrigin = origin ?? { x: 0, y: 0 };
   const safeScreenHeight = Math.max(screenHeight ?? 1, 1);
   const safeScreenWidth = Math.max(screenWidth ?? 1, 1);
+  const safeAvoidanceInsets = normalizeAvoidanceInsets(avoidanceInsets);
   const safeOtherPinPoints = Array.isArray(otherPinPoints) ? otherPinPoints : [];
 
   const bestCandidate = CANDIDATE_BASE_ANGLES.map((baseAngle) => {
@@ -122,6 +186,9 @@ export function getEventPinActionLayout({
       baseAngle,
       centers,
       score: getCandidateScore(centers, {
+        avoidanceInsets: safeAvoidanceInsets,
+        baseAngle,
+        origin: safeOrigin,
         otherPinPoints: safeOtherPinPoints,
         screenHeight: safeScreenHeight,
         screenWidth: safeScreenWidth,
@@ -193,6 +260,7 @@ function ActionSurface({ active, children }) {
 }
 
 export default function EventPinActionMenu({
+  avoidanceInsets = {},
   event,
   hoveredAction,
   origin,
@@ -202,15 +270,23 @@ export default function EventPinActionMenu({
   visible = false,
 }) {
   const progress = useRef(new Animated.Value(0)).current;
+  const hoverProgressByActionRef = useRef(
+    PIN_ACTIONS.reduce((values, action) => {
+      values[action.id] = new Animated.Value(0);
+      return values;
+    }, {})
+  );
+  const pinLayout = useMemo(() => getSessionEventPinLayout(event), [event]);
   const layout = useMemo(
     () =>
       getEventPinActionLayout({
+        avoidanceInsets,
         origin,
         otherPinPoints,
         screenHeight,
         screenWidth,
       }),
-    [origin, otherPinPoints, screenHeight, screenWidth]
+    [avoidanceInsets, origin, otherPinPoints, screenHeight, screenWidth]
   );
 
   useEffect(() => {
@@ -223,10 +299,84 @@ export default function EventPinActionMenu({
     }).start();
   }, [progress, visible]);
 
+  useEffect(() => {
+    PIN_ACTIONS.forEach((action) => {
+      Animated.timing(hoverProgressByActionRef.current[action.id], {
+        duration: HOVER_ANIMATION_MS,
+        easing: Easing.out(Easing.cubic),
+        toValue: hoveredAction === action.id ? 1 : 0,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [hoveredAction]);
+
   if (!origin) return null;
+
+  const backdropOpacity = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const focusedPinScale = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.22],
+  });
+  const hoveredActionConfig = layout.actions.find(
+    (action) => action.id === hoveredAction
+  );
+  const labelIsOnLeft = origin.x > (screenWidth || 0) / 2;
+  const labelBottom = Math.max(Number(avoidanceInsets?.bottom) || 0, 96) + 34;
 
   return (
     <View pointerEvents="none" style={styles.container}>
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: backdropOpacity }]}
+      >
+        <BlurView intensity={16} tint="light" style={StyleSheet.absoluteFill} />
+        <View pointerEvents="none" style={styles.backdropDim} />
+      </Animated.View>
+
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.focusedPin,
+          {
+            height: pinLayout.outerSize,
+            left: origin.x - pinLayout.outerSize / 2,
+            opacity: progress,
+            top: origin.y - pinLayout.outerSize / 2,
+            transform: [{ scale: focusedPinScale }],
+            width: pinLayout.outerSize,
+          },
+        ]}
+      >
+        <EventPin event={event} />
+      </Animated.View>
+
+      {hoveredActionConfig && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.actionLabelContainer,
+            {
+              bottom: labelBottom,
+              left: labelIsOnLeft ? 32 : undefined,
+              opacity: progress,
+              right: labelIsOnLeft ? undefined : 32,
+            },
+          ]}
+        >
+          <Text
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
+            numberOfLines={1}
+            style={styles.actionLabelText}
+          >
+            {hoveredActionConfig.label}
+          </Text>
+        </Animated.View>
+      )}
+
       {layout.actions.map((action, index) => {
         const isActive = hoveredAction === action.id;
         const iconName =
@@ -245,6 +395,24 @@ export default function EventPinActionMenu({
           inputRange: [0, 0.7, 1],
           outputRange: [0.56, 1.08, 1],
         });
+        const deltaX = action.center.x - origin.x;
+        const deltaY = action.center.y - origin.y;
+        const distance = Math.max(Math.hypot(deltaX, deltaY), 1);
+        const outwardX = (deltaX / distance) * HOVERED_ACTION_EXTRA_DISTANCE;
+        const outwardY = (deltaY / distance) * HOVERED_ACTION_EXTRA_DISTANCE;
+        const hoverProgress = hoverProgressByActionRef.current[action.id];
+        const hoverTranslateX = hoverProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, outwardX],
+        });
+        const hoverTranslateY = hoverProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, outwardY],
+        });
+        const hoverScale = hoverProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, HOVERED_ACTION_SCALE],
+        });
 
         return (
           <Animated.View
@@ -257,15 +425,20 @@ export default function EventPinActionMenu({
                 left: origin.x - PIN_ACTION_BUTTON_SIZE / 2,
                 opacity: progress,
                 top: origin.y - PIN_ACTION_BUTTON_SIZE / 2,
-                transform: [{ translateX }, { translateY }, { scale }],
-                zIndex: index + 1,
+                transform: [
+                  { translateX: Animated.add(translateX, hoverTranslateX) },
+                  { translateY: Animated.add(translateY, hoverTranslateY) },
+                  { scale: Animated.multiply(scale, hoverScale) },
+                ],
+                zIndex: isActive ? 20 : index + 3,
               },
+              isActive && styles.actionPositionActive,
             ]}
           >
             <ActionSurface active={isActive}>
               <Ionicons
                 name={iconName}
-                size={24}
+                size={28}
                 color={isActive ? colors.text : colors.iconMuted}
               />
             </ActionSurface>
@@ -279,12 +452,44 @@ export default function EventPinActionMenu({
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 4,
+    zIndex: 8,
+  },
+  backdrop: {
+    zIndex: 0,
+  },
+  backdropDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+  },
+  focusedPin: {
+    position: "absolute",
+    zIndex: 2,
+  },
+  actionLabelContainer: {
+    maxWidth: "72%",
+    position: "absolute",
+    zIndex: 12,
+  },
+  actionLabelText: {
+    color: colors.text,
+    fontSize: 42,
+    fontWeight: "800",
+    letterSpacing: 0,
+    textShadowColor: "rgba(0, 0, 0, 0.22)",
+    textShadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    textShadowRadius: 8,
   },
   actionPosition: {
+    elevation: 7,
     height: PIN_ACTION_BUTTON_SIZE,
     position: "absolute",
     width: PIN_ACTION_BUTTON_SIZE,
+  },
+  actionPositionActive: {
+    elevation: 12,
   },
   actionCircle: {
     alignItems: "center",
@@ -308,6 +513,9 @@ const styles = StyleSheet.create({
   actionCircleActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+    elevation: 12,
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
   },
   fallbackTint: {
     ...StyleSheet.absoluteFillObject,
