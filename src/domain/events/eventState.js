@@ -13,6 +13,7 @@ export const EVENT_AVAILABILITY = {
 
 export const PARTICIPATION_STATUS = {
   registered: "registered",
+  canceled: "canceled",
   userCanceled: "user_canceled",
   disabledEventCanceled: "disabled_event_canceled",
   attended: "attended",

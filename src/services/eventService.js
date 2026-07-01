@@ -23,6 +23,7 @@ import {
   listLocationRecords,
   listOrganizerRecords,
   listUserSavedEventRecords,
+  patchEventParticipationRecord,
 } from "../repositories/eventRepository";
 import {
   getCurrentUserRecord,
@@ -205,6 +206,37 @@ export async function joinEvent(id) {
       userId: currentUser.id,
     });
   }
+
+  return getEventById(id);
+}
+
+export async function cancelEventParticipation(id) {
+  const currentUser = await getCurrentUserRecord();
+  const data = await getEventCompositionData();
+  const event = data.events.find((nextEvent) => nextEvent.id === id);
+
+  if (!currentUser || !event) {
+    return null;
+  }
+
+  const existingParticipation = getUserActiveParticipation(
+    data.participations,
+    id,
+    currentUser.id
+  );
+
+  if (!existingParticipation) {
+    return getEventById(id);
+  }
+
+  const canceledAt = new Date().toISOString();
+
+  await patchEventParticipationRecord(existingParticipation.id, {
+    canceledAt,
+    disabledAt: null,
+    disabledReason: null,
+    status: PARTICIPATION_STATUS.canceled,
+  });
 
   return getEventById(id);
 }

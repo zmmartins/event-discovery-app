@@ -18,13 +18,21 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ScreenStatusBar from "../components/ScreenStatusBar";
 import { formatShortEventDate } from "../domain/events/eventFormatters";
-import { getEventById, joinEvent, toggleSavedEvent } from "../services/eventService";
+import {
+  cancelEventParticipation,
+  getEventById,
+  joinEvent,
+  toggleSavedEvent,
+} from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
+import { getForegroundUserLocation } from "../services/locationService";
 import { colors } from "../theme/colors";
+import { APP_MAP_STYLE } from "../theme/mapStyle";
 import { getAvatarImage, getEventDetailImage } from "../utils/imageAssets";
 
 const friendAvatarKeys = {
@@ -45,6 +53,17 @@ const BACK_BUTTON_TOP_OFFSET = 12;
 const SHEET_HANDLE_HEIGHT = 7;
 const SHEET_HANDLE_TOP_PADDING = 10;
 const SHEET_HANDLE_BOTTOM_PADDING = 18;
+const MINI_MAP_HEIGHT = 190;
+const MINI_MAP_LATITUDE_DELTA = 0.012;
+const MINI_MAP_LONGITUDE_DELTA = 0.012;
+const MINI_MAP_MIN_SAFE_DELTA = 0.000001;
+const MINI_MAP_MAX_LATITUDE_DELTA = 170;
+const MINI_MAP_MAX_LONGITUDE_DELTA = 360;
+const MINI_MAP_MIN_LATITUDE = -85;
+const MINI_MAP_MAX_LATITUDE = 85;
+const MINI_MAP_RECENTER_DURATION_MS = 420;
+const MINI_MAP_CENTER_TOLERANCE_METERS = 40;
+const MINI_MAP_BUTTON_SIZE = 42;
 const DETAIL_DESCRIPTION =
   "Prototype event description pending final organizer copy. This space is reserved for the event story, schedule notes, and practical details.";
 
@@ -56,6 +75,129 @@ function wait(milliseconds) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getTouchCount(nativeEvent, gestureState) {
+  return gestureState?.numberActiveTouches ?? nativeEvent?.touches?.length ?? 0;
+}
+
+function toRadians(value) {
+  return (value * Math.PI) / 180;
+}
+
+function getCoordinateDistanceMeters(firstCoordinate, secondCoordinate) {
+  if (!firstCoordinate || !secondCoordinate) return Number.POSITIVE_INFINITY;
+
+  const earthRadiusMeters = 6371000;
+  const latitudeDelta = toRadians(secondCoordinate.latitude - firstCoordinate.latitude);
+  const longitudeDelta = toRadians(
+    secondCoordinate.longitude - firstCoordinate.longitude
+  );
+  const firstLatitude = toRadians(firstCoordinate.latitude);
+  const secondLatitude = toRadians(secondCoordinate.latitude);
+
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(firstLatitude) *
+      Math.cos(secondLatitude) *
+      Math.sin(longitudeDelta / 2) ** 2;
+
+  return (
+    earthRadiusMeters * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+  );
+}
+
+function isValidCoordinate(coordinate) {
+  return (
+    Number.isFinite(coordinate?.latitude) &&
+    Number.isFinite(coordinate?.longitude)
+  );
+}
+
+function getEventLocationCoordinate(event) {
+  const coordinate = {
+    latitude: event?.latitude,
+    longitude: event?.longitude,
+  };
+
+  return isValidCoordinate(coordinate) ? coordinate : null;
+}
+
+function getMiniMapRegion(coordinate) {
+  return {
+    latitude: coordinate.latitude,
+    latitudeDelta: MINI_MAP_LATITUDE_DELTA,
+    longitude: coordinate.longitude,
+    longitudeDelta: MINI_MAP_LONGITUDE_DELTA,
+  };
+}
+
+function normalizeLongitude(longitude) {
+  if (!Number.isFinite(longitude)) return 0;
+
+  let nextLongitude = longitude;
+
+  while (nextLongitude > 180) nextLongitude -= 360;
+  while (nextLongitude < -180) nextLongitude += 360;
+
+  return nextLongitude;
+}
+
+function getSafeLatitudeDelta(latitudeDelta) {
+  if (!Number.isFinite(latitudeDelta)) return MINI_MAP_LATITUDE_DELTA;
+
+  return clamp(
+    Math.abs(latitudeDelta),
+    MINI_MAP_MIN_SAFE_DELTA,
+    MINI_MAP_MAX_LATITUDE_DELTA
+  );
+}
+
+function getSafeLongitudeDelta(longitudeDelta) {
+  if (!Number.isFinite(longitudeDelta)) return MINI_MAP_LONGITUDE_DELTA;
+
+  return clamp(
+    Math.abs(longitudeDelta),
+    MINI_MAP_MIN_SAFE_DELTA,
+    MINI_MAP_MAX_LONGITUDE_DELTA
+  );
+}
+
+function clampMiniMapRegion(region) {
+  if (!region) return region;
+
+  return {
+    latitude: clamp(region.latitude, MINI_MAP_MIN_LATITUDE, MINI_MAP_MAX_LATITUDE),
+    latitudeDelta: getSafeLatitudeDelta(region.latitudeDelta),
+    longitude: normalizeLongitude(region.longitude),
+    longitudeDelta: getSafeLongitudeDelta(region.longitudeDelta),
+  };
+}
+
+function getTouchPoint(touch) {
+  return {
+    x: Number.isFinite(touch?.pageX) ? touch.pageX : touch?.locationX ?? 0,
+    y: Number.isFinite(touch?.pageY) ? touch.pageY : touch?.locationY ?? 0,
+  };
+}
+
+function getTwoFingerTouchGesture(nativeEvent) {
+  const touches = nativeEvent?.touches ?? [];
+
+  if (touches.length < 2) return null;
+
+  const firstPoint = getTouchPoint(touches[0]);
+  const secondPoint = getTouchPoint(touches[1]);
+  const dx = secondPoint.x - firstPoint.x;
+  const dy = secondPoint.y - firstPoint.y;
+
+  return {
+    centroid: {
+      x: (firstPoint.x + secondPoint.x) / 2,
+      y: (firstPoint.y + secondPoint.y) / 2,
+    },
+    distance: Math.max(Math.hypot(dx, dy), 1),
+  };
 }
 
 function Tag({ children }) {
@@ -135,17 +277,386 @@ function ExperienceRow({ names }) {
   );
 }
 
-function MapPreview() {
+function EventLocationPin() {
+  return (
+    <View pointerEvents="none" style={styles.eventLocationPin}>
+      <View style={styles.eventLocationPinHead}>
+        <Ionicons name="location" size={20} color={colors.text} />
+      </View>
+      <View style={styles.eventLocationPinTip} />
+    </View>
+  );
+}
+
+function UserLocationDot() {
+  return (
+    <View pointerEvents="none" style={styles.miniUserLocationMarker}>
+      <View style={styles.miniUserLocationPulse} />
+      <View style={styles.miniUserLocationRing}>
+        <View style={styles.miniUserLocationDot} />
+      </View>
+    </View>
+  );
+}
+
+function EventMiniMap({
+  event,
+  onInteractionChange,
+  onMiniMapTouchActiveChange,
+  onOneFingerContentGestureEnd,
+  onOneFingerContentGestureMove,
+  onOneFingerContentGestureStart,
+}) {
+  const pathname = usePathname();
+  const mapRef = useRef(null);
+  const eventCoordinate = useMemo(() => getEventLocationCoordinate(event), [event]);
+  const [userCoordinate, setUserCoordinate] = useState(null);
+  const [isCenteredOnEvent, setIsCenteredOnEvent] = useState(true);
+  const [miniMapRegion, setMiniMapRegion] = useState(null);
+  const miniMapRegionRef = useRef(null);
+  const miniMapSizeRef = useRef({
+    height: MINI_MAP_HEIGHT,
+    width: 1,
+  });
+  const twoFingerGestureStartRef = useRef(null);
+  const isTwoFingerGestureActiveRef = useRef(false);
+  const isOneFingerContentGestureActiveRef = useRef(false);
+
+  const initialRegion = useMemo(() => {
+    if (!eventCoordinate) return null;
+
+    return getMiniMapRegion(eventCoordinate);
+  }, [eventCoordinate]);
+
+  useEffect(() => {
+    if (!initialRegion) return;
+
+    const nextRegion = clampMiniMapRegion(initialRegion);
+
+    miniMapRegionRef.current = nextRegion;
+    setMiniMapRegion(nextRegion);
+    setIsCenteredOnEvent(true);
+  }, [initialRegion]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    getForegroundUserLocation({
+      route: pathname,
+      screen: "EventDetailScreen",
+      source: "event_detail_mini_map",
+    }).then((result) => {
+      if (!isActive) return;
+
+      if (result.status === "available" && isValidCoordinate(result.coordinate)) {
+        setUserCoordinate(result.coordinate);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [pathname]);
+
+  const updateCenteredOnEventState = useCallback(
+    (region) => {
+      if (!eventCoordinate) return;
+
+      const distanceFromEvent = getCoordinateDistanceMeters(
+        {
+          latitude: region.latitude,
+          longitude: region.longitude,
+        },
+        eventCoordinate
+      );
+
+      setIsCenteredOnEvent(distanceFromEvent <= MINI_MAP_CENTER_TOLERANCE_METERS);
+    },
+    [eventCoordinate]
+  );
+
+  const commitMiniMapRegion = useCallback(
+    (region) => {
+      const nextRegion = clampMiniMapRegion(region);
+
+      miniMapRegionRef.current = nextRegion;
+      setMiniMapRegion(nextRegion);
+      updateCenteredOnEventState(nextRegion);
+    },
+    [updateCenteredOnEventState]
+  );
+
+  const centerOnEvent = useCallback(() => {
+    if (!eventCoordinate) return;
+
+    const nextRegion = clampMiniMapRegion(getMiniMapRegion(eventCoordinate));
+
+    Haptics.selectionAsync().catch(() => null);
+    miniMapRegionRef.current = nextRegion;
+    setMiniMapRegion(nextRegion);
+    setIsCenteredOnEvent(true);
+
+    mapRef.current?.animateToRegion?.(nextRegion, MINI_MAP_RECENTER_DURATION_MS);
+  }, [eventCoordinate]);
+
+  const handleRegionChange = useCallback(
+    (region) => {
+      updateCenteredOnEventState(region);
+    },
+    [updateCenteredOnEventState]
+  );
+
+  const handleRegionChangeComplete = useCallback(
+    (region) => {
+      updateCenteredOnEventState(region);
+    },
+    [updateCenteredOnEventState]
+  );
+
+  const beginTwoFingerMapGesture = useCallback(
+    (nativeEvent) => {
+      const touchGesture = getTwoFingerTouchGesture(nativeEvent);
+      const currentRegion = miniMapRegionRef.current;
+
+      if (!touchGesture || !currentRegion) return false;
+
+      isTwoFingerGestureActiveRef.current = true;
+      isOneFingerContentGestureActiveRef.current = false;
+      twoFingerGestureStartRef.current = {
+        region: currentRegion,
+        touchGesture,
+      };
+
+      onInteractionChange?.(true);
+
+      return true;
+    },
+    [onInteractionChange]
+  );
+
+  const updateTwoFingerMapGesture = useCallback(
+    (nativeEvent) => {
+      const currentTouchGesture = getTwoFingerTouchGesture(nativeEvent);
+      const gestureStart = twoFingerGestureStartRef.current;
+
+      if (!currentTouchGesture || !gestureStart) return;
+
+      const mapSize = miniMapSizeRef.current;
+      const mapWidth = Math.max(mapSize.width, 1);
+      const mapHeight = Math.max(mapSize.height, 1);
+      const startRegion = gestureStart.region;
+      const startTouchGesture = gestureStart.touchGesture;
+
+      const zoomScale = startTouchGesture.distance / currentTouchGesture.distance;
+      const nextLatitudeDelta = getSafeLatitudeDelta(
+        startRegion.latitudeDelta * zoomScale
+      );
+      const nextLongitudeDelta = getSafeLongitudeDelta(
+        startRegion.longitudeDelta * zoomScale
+      );
+
+      const centroidDx =
+        currentTouchGesture.centroid.x - startTouchGesture.centroid.x;
+      const centroidDy =
+        currentTouchGesture.centroid.y - startTouchGesture.centroid.y;
+
+      const nextRegion = {
+        latitude: startRegion.latitude + (centroidDy / mapHeight) * nextLatitudeDelta,
+        latitudeDelta: nextLatitudeDelta,
+        longitude:
+          startRegion.longitude - (centroidDx / mapWidth) * nextLongitudeDelta,
+        longitudeDelta: nextLongitudeDelta,
+      };
+
+      commitMiniMapRegion(nextRegion);
+    },
+    [commitMiniMapRegion]
+  );
+
+  const endMiniMapGesture = useCallback(
+    (gestureState) => {
+      const wasOneFingerContentGesture = isOneFingerContentGestureActiveRef.current;
+
+      isTwoFingerGestureActiveRef.current = false;
+      isOneFingerContentGestureActiveRef.current = false;
+      twoFingerGestureStartRef.current = null;
+
+      onInteractionChange?.(false);
+      onMiniMapTouchActiveChange?.(false);
+
+      if (wasOneFingerContentGesture) {
+        onOneFingerContentGestureEnd?.(gestureState);
+      }
+    },
+    [
+      onInteractionChange,
+      onMiniMapTouchActiveChange,
+      onOneFingerContentGestureEnd,
+    ]
+  );
+
+  const miniMapGestureResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+
+        onPanResponderGrant: (responderEvent, gestureState) => {
+          onMiniMapTouchActiveChange?.(true);
+
+          const touchCount = getTouchCount(responderEvent.nativeEvent, gestureState);
+
+          if (touchCount >= 2) {
+            beginTwoFingerMapGesture(responderEvent.nativeEvent);
+            return;
+          }
+
+          isTwoFingerGestureActiveRef.current = false;
+          isOneFingerContentGestureActiveRef.current = true;
+          twoFingerGestureStartRef.current = null;
+
+          onInteractionChange?.(false);
+          onOneFingerContentGestureStart?.();
+        },
+
+        onPanResponderMove: (responderEvent, gestureState) => {
+          const touchCount = getTouchCount(responderEvent.nativeEvent, gestureState);
+
+          if (touchCount >= 2) {
+            if (!isTwoFingerGestureActiveRef.current) {
+              beginTwoFingerMapGesture(responderEvent.nativeEvent);
+            }
+
+            updateTwoFingerMapGesture(responderEvent.nativeEvent);
+            return;
+          }
+
+          if (isTwoFingerGestureActiveRef.current) {
+            return;
+          }
+
+          if (!isOneFingerContentGestureActiveRef.current) {
+            isOneFingerContentGestureActiveRef.current = true;
+            onOneFingerContentGestureStart?.();
+          }
+
+          onOneFingerContentGestureMove?.(gestureState);
+        },
+
+        onPanResponderRelease: (_, gestureState) => {
+          endMiniMapGesture(gestureState);
+        },
+
+        onPanResponderTerminate: (_, gestureState) => {
+          endMiniMapGesture(gestureState);
+        },
+
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
+      }),
+    [
+      beginTwoFingerMapGesture,
+      endMiniMapGesture,
+      onInteractionChange,
+      onMiniMapTouchActiveChange,
+      onOneFingerContentGestureMove,
+      onOneFingerContentGestureStart,
+      updateTwoFingerMapGesture,
+    ]
+  );
+
+  if (!eventCoordinate || !initialRegion) {
+    return (
+      <View style={[styles.mapPreview, styles.mapUnavailable]}>
+        <Ionicons name="map-outline" size={24} color={colors.iconMuted} />
+        <Text style={styles.mapUnavailableText}>Location map unavailable</Text>
+      </View>
+    );
+  }
+
+  const isRecenterButtonActive = isCenteredOnEvent;
+
   return (
     <View style={styles.mapPreview}>
-      <View style={[styles.mapRoad, styles.mapRoadOne]} />
-      <View style={[styles.mapRoad, styles.mapRoadTwo]} />
-      <View style={[styles.mapRoad, styles.mapRoadThree]} />
-      <View style={[styles.mapRoad, styles.mapRoadFour]} />
-      <Text style={[styles.mapLabel, styles.mapLabelOne]}>Campo de Ourique</Text>
-      <Text style={[styles.mapLabel, styles.mapLabelTwo]}>Estrela</Text>
-      <Text style={[styles.mapLabel, styles.mapLabelThree]}>Lisbon</Text>
-      <Ionicons name="location" size={48} color={colors.primary} style={styles.mapPin} />
+      <View
+        onLayout={(layoutEvent) => {
+          const { height, width } = layoutEvent.nativeEvent.layout;
+
+          miniMapSizeRef.current = {
+            height: Math.max(height, 1),
+            width: Math.max(width, 1),
+          };
+        }}
+        style={styles.miniMapGestureGate}
+        {...miniMapGestureResponder.panHandlers}
+      >
+        <MapView
+          customMapStyle={APP_MAP_STYLE}
+          loadingBackgroundColor={colors.softSurface}
+          loadingEnabled
+          loadingIndicatorColor={colors.primary}
+          mapType="standard"
+          onRegionChange={handleRegionChange}
+          onRegionChangeComplete={handleRegionChangeComplete}
+          pitchEnabled={false}
+          provider={PROVIDER_GOOGLE}
+          ref={mapRef}
+          region={miniMapRegion ?? initialRegion}
+          rotateEnabled={false}
+          scrollEnabled={false}
+          showsBuildings={false}
+          showsCompass={false}
+          showsIndoors={false}
+          showsMyLocationButton={false}
+          showsPointsOfInterest={false}
+          showsScale={false}
+          showsTraffic={false}
+          style={styles.miniMap}
+          toolbarEnabled={false}
+          zoomEnabled={false}
+          zoomTapEnabled={false}
+        >
+          <Marker
+            anchor={{ x: 0.5, y: 1 }}
+            coordinate={eventCoordinate}
+            tracksViewChanges={false}
+          >
+            <EventLocationPin />
+          </Marker>
+
+          {userCoordinate && (
+            <Marker
+              anchor={{ x: 0.5, y: 0.5 }}
+              coordinate={userCoordinate}
+              tracksViewChanges={false}
+            >
+              <UserLocationDot />
+            </Marker>
+          )}
+        </MapView>
+      </View>
+
+      <Pressable
+        accessibilityLabel="Center map on event location"
+        accessibilityRole="button"
+        accessibilityState={{ selected: isCenteredOnEvent }}
+        onPress={centerOnEvent}
+        style={({ pressed }) => [
+          styles.mapRecenterButton,
+          isRecenterButtonActive
+            ? styles.mapRecenterButtonActive
+            : styles.mapRecenterButtonInactive,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Ionicons
+          name="locate"
+          size={20}
+          color={isRecenterButtonActive ? colors.text : colors.iconMuted}
+        />
+      </Pressable>
     </View>
   );
 }
@@ -208,11 +719,15 @@ export default function EventDetailScreen() {
   const [event, setEvent] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
+  const [isMiniMapInteracting, setIsMiniMapInteracting] = useState(false);
+  const [isParticipationUpdating, setIsParticipationUpdating] = useState(false);
   const sheetY = useRef(new Animated.Value(0)).current;
   const currentSheetY = useRef(0);
   const sheetStartY = useRef(0);
   const scrollOffsetY = useRef(0);
   const scrollViewRef = useRef(null);
+  const isMiniMapTouchActiveRef = useRef(false);
+  const miniMapScrollStartOffsetY = useRef(0);
   const saveScale = useRef(new Animated.Value(1)).current;
   const ctaScale = useRef(new Animated.Value(1)).current;
 
@@ -307,6 +822,36 @@ export default function EventDetailScreen() {
     [event?.id, expandedY, isSheetExpanded, pathname, resetScrollToTop, sheetY]
   );
 
+  const handleMiniMapTouchActiveChange = useCallback((isActive) => {
+    isMiniMapTouchActiveRef.current = isActive;
+  }, []);
+
+  const beginMiniMapContentGesture = useCallback(() => {
+    miniMapScrollStartOffsetY.current = scrollOffsetY.current;
+  }, []);
+
+  const updateMiniMapContentGesture = useCallback(
+    (gestureState) => {
+      if (!isSheetExpanded) return;
+
+      const nextOffsetY = Math.max(
+        0,
+        miniMapScrollStartOffsetY.current - gestureState.dy
+      );
+
+      scrollOffsetY.current = nextOffsetY;
+      scrollViewRef.current?.scrollTo?.({
+        animated: false,
+        y: nextOffsetY,
+      });
+    },
+    [isSheetExpanded]
+  );
+
+  const finishMiniMapContentGesture = useCallback(() => {
+    // One-finger mini-map drags should behave like scrolling static content.
+  }, []);
+
   const handlePanResponder = useMemo(
     () =>
       PanResponder.create({
@@ -336,6 +881,7 @@ export default function EventDetailScreen() {
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          !isMiniMapTouchActiveRef.current &&
           !isSheetExpanded &&
           gestureState.dy < -8 &&
           Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
@@ -365,6 +911,7 @@ export default function EventDetailScreen() {
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          !isMiniMapTouchActiveRef.current &&
           isSheetExpanded &&
           scrollOffsetY.current <= 0 &&
           gestureState.dy > 10 &&
@@ -425,6 +972,8 @@ export default function EventDetailScreen() {
   );
 
   async function handleJoin() {
+    if (isParticipationUpdating) return;
+
     if (!event || event.isJoined || !event.canJoin) {
       if (event && !event.isJoined) {
         logInteraction(LOG_ACTIONS.participationClicked, {
@@ -440,39 +989,92 @@ export default function EventDetailScreen() {
       return;
     }
 
-    animateCtaPress();
-    triggerDoubleHaptic();
-    logInteraction(LOG_ACTIONS.participationClicked, {
-      eventId: event.id,
-      result: "requested",
-      route: pathname,
-      screen: "EventDetailScreen",
-      source: "detail_cta",
-    }).catch(() => null);
-    const updatedEvent = await joinEvent(event.id);
+    setIsParticipationUpdating(true);
 
-    if (!updatedEvent) {
-      logInteraction(LOG_ACTIONS.participationConfirmed, {
+    try {
+      animateCtaPress();
+      triggerDoubleHaptic();
+
+      logInteraction(LOG_ACTIONS.participationClicked, {
         eventId: event.id,
-        reason: "join_failed",
-        result: "failed",
+        result: "requested",
         route: pathname,
         screen: "EventDetailScreen",
         source: "detail_cta",
       }).catch(() => null);
-      return;
+
+      const updatedEvent = await joinEvent(event.id);
+
+      if (!updatedEvent) {
+        logInteraction(LOG_ACTIONS.participationConfirmed, {
+          eventId: event.id,
+          reason: "join_failed",
+          result: "failed",
+          route: pathname,
+          screen: "EventDetailScreen",
+          source: "detail_cta",
+        }).catch(() => null);
+        return;
+      }
+
+      setEvent(updatedEvent);
+      setIsSaved(Boolean(updatedEvent?.isSaved));
+
+      logInteraction(LOG_ACTIONS.participationConfirmed, {
+        eventId: event.id,
+        route: pathname,
+        screen: "EventDetailScreen",
+        source: "detail_cta",
+        result: updatedEvent.isJoined ? "joined" : "unchanged",
+      }).catch(() => null);
+    } finally {
+      setIsParticipationUpdating(false);
     }
+  }
 
-    setEvent(updatedEvent);
-    setIsSaved(Boolean(updatedEvent?.isSaved));
+  async function handleCancelParticipation() {
+    if (isParticipationUpdating || !event?.isJoined) return;
 
-    logInteraction(LOG_ACTIONS.participationConfirmed, {
-      eventId: event.id,
-      route: pathname,
-      screen: "EventDetailScreen",
-      source: "detail_cta",
-      result: updatedEvent.isJoined ? "joined" : "unchanged",
-    }).catch(() => null);
+    setIsParticipationUpdating(true);
+
+    try {
+      Haptics.selectionAsync().catch(() => null);
+
+      logInteraction(LOG_ACTIONS.participationClicked, {
+        eventId: event.id,
+        result: "cancel_requested",
+        route: pathname,
+        screen: "EventDetailScreen",
+        source: "detail_cta_cancel",
+      }).catch(() => null);
+
+      const updatedEvent = await cancelEventParticipation(event.id);
+
+      if (!updatedEvent) {
+        logInteraction(LOG_ACTIONS.participationConfirmed, {
+          eventId: event.id,
+          reason: "cancel_failed",
+          result: "failed",
+          route: pathname,
+          screen: "EventDetailScreen",
+          source: "detail_cta_cancel",
+        }).catch(() => null);
+        return;
+      }
+
+      setEvent(updatedEvent);
+      setIsSaved(Boolean(updatedEvent?.isSaved));
+
+      logInteraction(LOG_ACTIONS.participationConfirmed, {
+        eventId: event.id,
+        route: pathname,
+        screen: "EventDetailScreen",
+        source: "detail_cta_cancel",
+        result: updatedEvent.isJoined ? "cancel_failed" : "canceled",
+      }).catch(() => null);
+    } finally {
+      setIsParticipationUpdating(false);
+    }
   }
 
   function handleBackPress() {
@@ -524,7 +1126,10 @@ export default function EventDetailScreen() {
   const timeRange = getEventTimeRange(event);
   const statusBarVariant = isSheetExpanded ? "lightBackground" : "image";
   const joinButtonLabel = getJoinButtonLabel(event);
-  const isJoinButtonDisabled = event.isJoined || !event.canJoin;
+  const shouldShowCancelParticipationButton = event.isJoined;
+  const isJoinButtonDisabled =
+    isParticipationUpdating || event.isJoined || !event.canJoin;
+  const isCancelButtonDisabled = isParticipationUpdating;
 
   return (
     <View style={styles.container}>
@@ -569,7 +1174,7 @@ export default function EventDetailScreen() {
             onScroll={(event) => {
               scrollOffsetY.current = event.nativeEvent.contentOffset.y;
             }}
-            scrollEnabled={isSheetExpanded}
+            scrollEnabled={isSheetExpanded && !isMiniMapInteracting}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
           >
@@ -610,7 +1215,14 @@ export default function EventDetailScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Location</Text>
               <Text style={styles.locationText}>{event.locationName}</Text>
-              <MapPreview />
+              <EventMiniMap
+                event={event}
+                onInteractionChange={setIsMiniMapInteracting}
+                onMiniMapTouchActiveChange={handleMiniMapTouchActiveChange}
+                onOneFingerContentGestureEnd={finishMiniMapContentGesture}
+                onOneFingerContentGestureMove={updateMiniMapContentGesture}
+                onOneFingerContentGestureStart={beginMiniMapContentGesture}
+              />
             </View>
 
             <View style={styles.section}>
@@ -641,22 +1253,43 @@ export default function EventDetailScreen() {
         ]}
       >
         <Text style={styles.ctaPrice}>{price}</Text>
-        <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
-          <Pressable
-            accessibilityLabel={joinButtonLabel}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: isJoinButtonDisabled }}
-            disabled={isJoinButtonDisabled}
-            onPress={handleJoin}
-            style={({ pressed }) => [
-              styles.ctaButton,
-              isJoinButtonDisabled && styles.ctaButtonJoined,
-              pressed && !isJoinButtonDisabled && styles.pressed,
-            ]}
+        <View style={styles.ctaActionsRow}>
+          {shouldShowCancelParticipationButton && (
+            <Pressable
+              accessibilityLabel="Cancel attendance"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isCancelButtonDisabled }}
+              disabled={isCancelButtonDisabled}
+              onPress={handleCancelParticipation}
+              style={({ pressed }) => [
+                styles.cancelParticipationButton,
+                isCancelButtonDisabled && styles.cancelParticipationButtonDisabled,
+                pressed && !isCancelButtonDisabled && styles.pressed,
+              ]}
+            >
+              <Text style={styles.cancelParticipationButtonText}>Cancel</Text>
+            </Pressable>
+          )}
+
+          <Animated.View
+            style={[styles.ctaButtonWrapper, { transform: [{ scale: ctaScale }] }]}
           >
-            <Text style={styles.ctaButtonText}>{joinButtonLabel}</Text>
-          </Pressable>
-        </Animated.View>
+            <Pressable
+              accessibilityLabel={joinButtonLabel}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isJoinButtonDisabled }}
+              disabled={isJoinButtonDisabled}
+              onPress={handleJoin}
+              style={({ pressed }) => [
+                styles.ctaButton,
+                isJoinButtonDisabled && styles.ctaButtonJoined,
+                pressed && !isJoinButtonDisabled && styles.pressed,
+              ]}
+            >
+              <Text style={styles.ctaButtonText}>{joinButtonLabel}</Text>
+            </Pressable>
+          </Animated.View>
+        </View>
       </View>
     </View>
   );
@@ -807,62 +1440,133 @@ const styles = StyleSheet.create({
   },
   mapPreview: {
     backgroundColor: colors.softSurface,
-    borderRadius: 10,
-    height: 180,
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: MINI_MAP_HEIGHT,
     overflow: "hidden",
   },
-  mapRoad: {
-    backgroundColor: colors.effects.surfaceOverlay,
-    borderRadius: 3,
-    height: 5,
-    position: "absolute",
-    width: 280,
+  miniMap: {
+    ...StyleSheet.absoluteFillObject,
   },
-  mapRoadOne: {
-    left: -26,
-    top: 48,
-    transform: [{ rotate: "-22deg" }],
+  miniMapGestureGate: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
-  mapRoadTwo: {
-    right: -30,
-    top: 94,
-    transform: [{ rotate: "18deg" }],
+  mapUnavailable: {
+    alignItems: "center",
+    gap: 8,
+    justifyContent: "center",
   },
-  mapRoadThree: {
-    left: 24,
-    top: 132,
-    transform: [{ rotate: "-6deg" }],
-  },
-  mapRoadFour: {
-    left: 84,
-    top: 22,
-    transform: [{ rotate: "74deg" }],
-  },
-  mapLabel: {
-    color: colors.mutedText,
-    fontSize: 8,
-    fontWeight: "700",
-    position: "absolute",
-  },
-  mapLabelOne: {
-    left: 30,
-    top: 85,
-  },
-  mapLabelTwo: {
-    left: 118,
-    top: 128,
-  },
-  mapLabelThree: {
-    bottom: 18,
+  mapUnavailableText: {
+    color: colors.secondaryText,
     fontSize: 12,
-    right: 16,
+    fontWeight: "800",
   },
-  mapPin: {
-    left: "48%",
-    marginLeft: -24,
-    marginTop: -24,
+  eventLocationPin: {
+    alignItems: "center",
+    height: 48,
+    justifyContent: "flex-start",
+    overflow: "visible",
+    width: 42,
+  },
+  eventLocationPinHead: {
+    alignItems: "center",
+    backgroundColor: colors.primary,
+    borderColor: colors.text,
+    borderRadius: 18,
+    borderWidth: 2,
+    elevation: 4,
+    height: 36,
+    justifyContent: "center",
+    shadowColor: colors.effects.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    width: 36,
+  },
+  eventLocationPinTip: {
+    backgroundColor: colors.primary,
+    borderBottomWidth: 2,
+    borderColor: colors.text,
+    borderRightWidth: 2,
+    height: 12,
+    marginTop: -8,
+    transform: [{ rotate: "45deg" }],
+    width: 12,
+  },
+  miniUserLocationMarker: {
+    alignItems: "center",
+    height: 36,
+    justifyContent: "center",
+    overflow: "visible",
+    width: 36,
+  },
+  miniUserLocationPulse: {
+    backgroundColor: colors.effects.primaryIndicator,
+    borderRadius: 18,
+    height: 36,
+    opacity: 0.35,
     position: "absolute",
-    top: "53%",
+    width: 36,
+  },
+  miniUserLocationRing: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+    borderRadius: 12,
+    borderWidth: 3,
+    elevation: 3,
+    height: 24,
+    justifyContent: "center",
+    shadowColor: colors.effects.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.14,
+    shadowRadius: 6,
+    width: 24,
+  },
+  miniUserLocationDot: {
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+    height: 8,
+    width: 8,
+  },
+  mapRecenterButton: {
+    alignItems: "center",
+    borderRadius: MINI_MAP_BUTTON_SIZE / 2,
+    bottom: 12,
+    elevation: 5,
+    height: MINI_MAP_BUTTON_SIZE,
+    justifyContent: "center",
+    position: "absolute",
+    right: 12,
+    shadowColor: colors.effects.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.16,
+    shadowRadius: 9,
+    width: MINI_MAP_BUTTON_SIZE,
+    zIndex: 3,
+  },
+  mapRecenterButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.text,
+    borderWidth: StyleSheet.hairlineWidth,
+    opacity: 1,
+  },
+  mapRecenterButtonInactive: {
+    backgroundColor: colors.effects.surfaceRaised,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    opacity: 0.56,
   },
   eyebrow: {
     color: colors.secondaryText,
@@ -976,12 +1680,21 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginBottom: 12,
   },
+  ctaActionsRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
+  ctaButtonWrapper: {
+    flex: 1,
+  },
   ctaButton: {
     alignItems: "center",
     backgroundColor: colors.primary,
     borderRadius: 16,
-    minHeight: 52,
     justifyContent: "center",
+    minHeight: 52,
+    width: "100%",
   },
   ctaButtonJoined: {
     backgroundColor: colors.effects.primaryDisabled,
@@ -989,6 +1702,24 @@ const styles = StyleSheet.create({
   ctaButtonText: {
     color: colors.text,
     fontSize: 16,
+    fontWeight: "900",
+  },
+  cancelParticipationButton: {
+    alignItems: "center",
+    backgroundColor: colors.status.error,
+    borderColor: colors.status.error,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: 52,
+    paddingHorizontal: 18,
+  },
+  cancelParticipationButtonDisabled: {
+    opacity: 0.56,
+  },
+  cancelParticipationButtonText: {
+    color: colors.surface,
+    fontSize: 15,
     fontWeight: "900",
   },
   pressed: {

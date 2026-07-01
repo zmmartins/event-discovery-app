@@ -9,7 +9,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  Vibration,
   View,
   useWindowDimensions,
 } from "react-native";
@@ -62,10 +61,12 @@ const PREVIEW_BASE_CARD_HEIGHT = 520;
 const PREVIEW_MAX_CARD_HEIGHT = 680;
 
 const LOCATION_CENTER_ANIMATION_MS = 700;
+const INITIAL_MAP_FOCUS_ANIMATION_MS = 650;
+const INITIAL_MAP_MIN_LATITUDE_DELTA = 0.012;
+const INITIAL_MAP_MIN_LONGITUDE_DELTA = 0.012;
+const INITIAL_MAP_FIT_PADDING_FACTOR = 2.35;
 const EVENT_CENTER_ANIMATION_MS = 220;
 const EVENT_PREVIEW_FALLBACK_DELAY_MS = EVENT_CENTER_ANIMATION_MS + 140;
-const EVENT_CENTER_CONTINUOUS_VIBRATION_MS = 900;
-const EVENT_CENTER_VIBRATION_MAX_DURATION_MS = EVENT_PREVIEW_FALLBACK_DELAY_MS + 160;
 const EVENT_CENTER_SCREEN_TOLERANCE_POINTS = 8;
 const EVENT_CENTER_TOLERANCE_METERS = 30;
 const USER_CENTER_TOLERANCE_METERS = 80;
@@ -90,7 +91,6 @@ const PREVIEW_ORIGIN_OFFSET_Y = Platform.select({
   default: 0,
 });
 
-let hasAutoCenteredOnUserThisSession = false;
 let sessionLocationStatus = "idle";
 let sessionUserLocation = null;
 
@@ -368,8 +368,79 @@ function getTopEventPinTouchTargetAtPoint({
 
 function getEventCoordinate(event) {
   return {
-    latitude: event.latitude,
-    longitude: event.longitude,
+    latitude: event?.latitude,
+    longitude: event?.longitude,
+  };
+}
+
+function isValidCoordinate(coordinate) {
+  return Number.isFinite(coordinate?.latitude) && Number.isFinite(coordinate?.longitude);
+}
+
+function getEventCoordinateOrNull(event) {
+  const coordinate = getEventCoordinate(event);
+
+  return isValidCoordinate(coordinate) ? coordinate : null;
+}
+
+function getNearestEventToCoordinate(events, coordinate) {
+  if (!isValidCoordinate(coordinate)) return null;
+
+  return (
+    events
+      .map((event) => {
+        const eventCoordinate = getEventCoordinateOrNull(event);
+
+        if (!eventCoordinate) return null;
+
+        return {
+          distance: getCoordinateDistanceMeters(coordinate, eventCoordinate),
+          event,
+        };
+      })
+      .filter(Boolean)
+      .sort((first, second) => first.distance - second.distance)[0]?.event ?? null
+  );
+}
+
+function getRegionCenteredOnCoordinateIncludingCoordinates(
+  centerCoordinate,
+  coordinates
+) {
+  const safeCenter = isValidCoordinate(centerCoordinate)
+    ? centerCoordinate
+    : {
+        latitude: LISBON_REGION.latitude,
+        longitude: LISBON_REGION.longitude,
+      };
+
+  const safeCoordinates = coordinates.filter(isValidCoordinate);
+
+  const maxLatitudeDistance = Math.max(
+    0,
+    ...safeCoordinates.map((coordinate) =>
+      Math.abs(coordinate.latitude - safeCenter.latitude)
+    )
+  );
+
+  const maxLongitudeDistance = Math.max(
+    0,
+    ...safeCoordinates.map((coordinate) =>
+      Math.abs(coordinate.longitude - safeCenter.longitude)
+    )
+  );
+
+  return {
+    latitude: safeCenter.latitude,
+    latitudeDelta: Math.max(
+      INITIAL_MAP_MIN_LATITUDE_DELTA,
+      maxLatitudeDistance * INITIAL_MAP_FIT_PADDING_FACTOR
+    ),
+    longitude: safeCenter.longitude,
+    longitudeDelta: Math.max(
+      INITIAL_MAP_MIN_LONGITUDE_DELTA,
+      maxLongitudeDistance * INITIAL_MAP_FIT_PADDING_FACTOR
+    ),
   };
 }
 
@@ -428,6 +499,8 @@ export default function MapScreen() {
   const mapContainerOffsetRef = useRef({ x: 0, y: 0 });
   const mapRef = useRef(null);
   const isMapReadyRef = useRef(false);
+  const initialMapFocusKeyRef = useRef(null);
+  const randomInitialFocusEventIdRef = useRef(null);
   const isRecenteringOnUserRef = useRef(false);
   const currentRegionRef = useRef(LISBON_REGION);
   const morphPreviewRef = useRef(null);
@@ -437,7 +510,6 @@ export default function MapScreen() {
   const pendingPinTapTargetRef = useRef(null);
   const suppressNativeMarkerPressUntilRef = useRef(0);
   const eventCenterTimeoutRef = useRef(null);
-  const eventCenterHapticTimeoutRef = useRef(null);
   const posterWarmupStatusRef = useRef({});
   const previewOpenRequestIdRef = useRef(0);
   const pinActionDismissTimeoutRef = useRef(null);
@@ -450,14 +522,16 @@ export default function MapScreen() {
   const isPinActionInteractionActiveRef = useRef(false);
   const isRecenteringOnEventRef = useRef(false);
   const hasDismissedPreviewByGestureRef = useRef(false);
-  const pendingEventCenterHapticsRequestIdRef = useRef(null);
-  const hasStartedEventCenterHapticsRef = useRef(false);
 
   const [events, setEvents] = useState([]);
+  const [hasLoadedEvents, setHasLoadedEvents] = useState(false);
   const [loadedPinImages, setLoadedPinImages] = useState({});
   const [warmedPosterImageKeys, setWarmedPosterImageKeys] = useState({});
   const [locationStatus, setLocationStatus] = useState(
     sessionLocationStatus === "idle" ? "locating" : sessionLocationStatus
+  );
+  const [hasResolvedInitialLocation, setHasResolvedInitialLocation] = useState(
+    sessionLocationStatus !== "idle"
   );
   const [isMapCenteredOnUser, setIsMapCenteredOnUser] = useState(false);
   const [mapLayout, setMapLayout] = useState({
@@ -479,32 +553,8 @@ export default function MapScreen() {
     screen: "MapScreen",
   });
 
-  const stopEventCenterHaptics = useCallback(() => {
-    Vibration.cancel();
-
-    if (eventCenterHapticTimeoutRef.current) {
-      clearTimeout(eventCenterHapticTimeoutRef.current);
-      eventCenterHapticTimeoutRef.current = null;
-    }
-
-    pendingEventCenterHapticsRequestIdRef.current = null;
-    hasStartedEventCenterHapticsRef.current = false;
-  }, []);
-
-  const startEventCenterHaptics = useCallback(() => {
-    stopEventCenterHaptics();
-
-    Vibration.vibrate([0, EVENT_CENTER_CONTINUOUS_VIBRATION_MS], true);
-
-    eventCenterHapticTimeoutRef.current = setTimeout(() => {
-      stopEventCenterHaptics();
-    }, EVENT_CENTER_VIBRATION_MAX_DURATION_MS);
-  }, [stopEventCenterHaptics]);
-
   useEffect(() => {
     return () => {
-      stopEventCenterHaptics();
-
       if (eventCenterTimeoutRef.current) {
         clearTimeout(eventCenterTimeoutRef.current);
         eventCenterTimeoutRef.current = null;
@@ -532,7 +582,7 @@ export default function MapScreen() {
       suppressMapGestureUntilRef.current = 0;
       suppressPinPressRef.current = null;
     };
-  }, [stopEventCenterHaptics]);
+  }, []);
 
   const handlePinImageLoad = useCallback((eventId) => {
     requestAnimationFrame(() => {
@@ -585,8 +635,6 @@ export default function MapScreen() {
   );
 
   const cancelPendingEventPreview = useCallback(() => {
-    stopEventCenterHaptics();
-
     pendingPreviewEventRef.current = null;
     pendingPreviewRequestIdRef.current = null;
     isRecenteringOnEventRef.current = false;
@@ -596,7 +644,7 @@ export default function MapScreen() {
       clearTimeout(eventCenterTimeoutRef.current);
       eventCenterTimeoutRef.current = null;
     }
-  }, [stopEventCenterHaptics]);
+  }, []);
 
   const centerMapOnRegion = useCallback((region, duration) => {
     currentRegionRef.current = region;
@@ -663,9 +711,87 @@ export default function MapScreen() {
     [centerMapOnUser]
   );
 
+  const getRandomInitialFocusEvent = useCallback((candidateEvents) => {
+    if (!candidateEvents.length) return null;
+
+    const existingRandomEvent = candidateEvents.find(
+      (event) => event.id === randomInitialFocusEventIdRef.current
+    );
+
+    if (existingRandomEvent) {
+      return existingRandomEvent;
+    }
+
+    const nextRandomEvent =
+      candidateEvents[Math.floor(Math.random() * candidateEvents.length)] ?? null;
+
+    randomInitialFocusEventIdRef.current = nextRandomEvent?.id ?? null;
+
+    return nextRandomEvent;
+  }, []);
+
+  const getInitialMapFocusRegion = useCallback(
+    ({ events: visibleEvents, isDiscoveryMode, location }) => {
+      const eventsWithCoordinates = visibleEvents.filter((event) =>
+        isValidCoordinate(getEventCoordinateOrNull(event))
+      );
+
+      if (isDiscoveryMode) {
+        const discoveryCoordinates = eventsWithCoordinates
+          .map(getEventCoordinateOrNull)
+          .filter(Boolean);
+
+        if (isValidCoordinate(location)) {
+          return getRegionCenteredOnCoordinateIncludingCoordinates(
+            location,
+            discoveryCoordinates
+          );
+        }
+
+        const fallbackEvent = getRandomInitialFocusEvent(eventsWithCoordinates);
+        const fallbackCoordinate = getEventCoordinateOrNull(fallbackEvent);
+
+        if (fallbackCoordinate) {
+          return getRegionCenteredOnCoordinateIncludingCoordinates(
+            fallbackCoordinate,
+            discoveryCoordinates
+          );
+        }
+
+        return LISBON_REGION;
+      }
+
+      if (isValidCoordinate(location)) {
+        const nearestEvent = getNearestEventToCoordinate(eventsWithCoordinates, location);
+        const nearestEventCoordinate = getEventCoordinateOrNull(nearestEvent);
+
+        return getRegionCenteredOnCoordinateIncludingCoordinates(
+          location,
+          nearestEventCoordinate ? [nearestEventCoordinate] : []
+        );
+      }
+
+      const fallbackEvent = getRandomInitialFocusEvent(eventsWithCoordinates);
+      const fallbackCoordinate = getEventCoordinateOrNull(fallbackEvent);
+
+      if (fallbackCoordinate) {
+        return getRegionCenteredOnCoordinateIncludingCoordinates(fallbackCoordinate, [
+          fallbackCoordinate,
+        ]);
+      }
+
+      return LISBON_REGION;
+    },
+    [getRandomInitialFocusEvent]
+  );
+
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
+
+      setHasLoadedEvents(false);
+      initialMapFocusKeyRef.current = null;
+      randomInitialFocusEventIdRef.current = null;
 
       getUpcomingEvents().then((nextEvents) => {
         if (isActive) {
@@ -673,6 +799,7 @@ export default function MapScreen() {
 
           setLoadedPinImages({});
           setEvents(filteredEvents);
+          setHasLoadedEvents(true);
         }
       });
 
@@ -710,53 +837,84 @@ export default function MapScreen() {
     useCallback(() => {
       let isActive = true;
 
-      if (hasAutoCenteredOnUserThisSession) {
-        if (sessionUserLocation) {
-          setUserLocation(sessionUserLocation);
-          setIsMapCenteredOnUser(
-            isRegionCenteredOnCoordinate(currentRegionRef.current, sessionUserLocation)
-          );
-        } else {
-          setIsMapCenteredOnUser(false);
-        }
-
-        if (sessionLocationStatus !== "idle") {
-          setLocationStatus(sessionLocationStatus);
-        }
-
-        return () => {
-          isActive = false;
-        };
-      }
-
-      hasAutoCenteredOnUserThisSession = true;
+      setHasResolvedInitialLocation(false);
       sessionLocationStatus = "locating";
       setLocationStatus("locating");
 
       getForegroundUserLocation({
         route: pathname,
         screen: "MapScreen",
-        source: "explore_map_initial_focus",
+        source: isDiscoveryActive
+          ? "discover_map_initial_focus"
+          : "explore_map_initial_focus",
       }).then((result) => {
         if (!isActive) {
           if (result.status === "available" && result.coordinate) {
             sessionUserLocation = result.coordinate;
             sessionLocationStatus = "available";
-            return;
+          } else {
+            sessionLocationStatus = result.status === "denied" ? "denied" : "unavailable";
+            sessionUserLocation = null;
           }
 
-          sessionLocationStatus = result.status === "denied" ? "denied" : "unavailable";
           return;
         }
 
-        applyLocationResult(result, true);
+        applyLocationResult(result, false);
+        setHasResolvedInitialLocation(true);
       });
 
       return () => {
         isActive = false;
       };
-    }, [applyLocationResult, pathname])
+    }, [applyLocationResult, isDiscoveryActive, pathname])
   );
+
+  useEffect(() => {
+    if (!hasLoadedEvents || !hasResolvedInitialLocation) {
+      return;
+    }
+
+    const focusEventIds = events.map((event) => event.id).join(",");
+    const locationKey = isValidCoordinate(userLocation)
+      ? `${userLocation.latitude.toFixed(5)},${userLocation.longitude.toFixed(5)}`
+      : "no-location";
+
+    const nextFocusKey = [
+      isDiscoveryActive ? "discovery" : "regular",
+      focusEventIds,
+      locationKey,
+    ].join("|");
+
+    if (initialMapFocusKeyRef.current === nextFocusKey) {
+      return;
+    }
+
+    const nextRegion = getInitialMapFocusRegion({
+      events,
+      isDiscoveryMode: isDiscoveryActive,
+      location: userLocation,
+    });
+
+    if (!nextRegion) {
+      return;
+    }
+
+    initialMapFocusKeyRef.current = nextFocusKey;
+
+    isRecenteringOnUserRef.current = isValidCoordinate(userLocation);
+    setIsMapCenteredOnUser(isValidCoordinate(userLocation));
+
+    centerMapOnRegion(nextRegion, INITIAL_MAP_FOCUS_ANIMATION_MS);
+  }, [
+    centerMapOnRegion,
+    events,
+    getInitialMapFocusRegion,
+    hasLoadedEvents,
+    hasResolvedInitialLocation,
+    isDiscoveryActive,
+    userLocation,
+  ]);
 
   const handlePreviewCloseComplete = useCallback(() => {
     setPreviewGeometry(null);
@@ -798,27 +956,9 @@ export default function MapScreen() {
     [closePreview, selectedEvent]
   );
 
-  const handleRegionChange = useCallback(
-    (region) => {
-      currentRegionRef.current = region;
-      const pendingPreviewEvent = pendingPreviewEventRef.current;
-      const pendingHapticsRequestId = pendingEventCenterHapticsRequestIdRef.current;
-      if (
-        !pendingPreviewEvent ||
-        !pendingHapticsRequestId ||
-        hasStartedEventCenterHapticsRef.current ||
-        !isRecenteringOnEventRef.current
-      ) {
-        return;
-      }
-      if (isRegionCenteredOnEvent(region, pendingPreviewEvent)) {
-        return;
-      }
-      hasStartedEventCenterHapticsRef.current = true;
-      startEventCenterHaptics();
-    },
-    [startEventCenterHaptics]
-  );
+  const handleRegionChange = useCallback((region) => {
+    currentRegionRef.current = region;
+  }, []);
 
   const handleMapLayout = useCallback((layoutEvent) => {
     const { height, width } = layoutEvent.nativeEvent.layout;
@@ -1097,8 +1237,6 @@ export default function MapScreen() {
 
   const completePendingPreviewOpen = useCallback(
     (event, previewRequestId) => {
-      stopEventCenterHaptics();
-
       if (eventCenterTimeoutRef.current) {
         clearTimeout(eventCenterTimeoutRef.current);
         eventCenterTimeoutRef.current = null;
@@ -1113,11 +1251,7 @@ export default function MapScreen() {
         openPreviewForEventAtCurrentPinPosition(event, previewRequestId);
       }
     },
-    [
-      openPreviewForEventAtCurrentPinPosition,
-      refreshEventPinTouchPoints,
-      stopEventCenterHaptics,
-    ]
+    [openPreviewForEventAtCurrentPinPosition, refreshEventPinTouchPoints]
   );
 
   const animateMapCameraToCoordinate = useCallback(async (coordinate, duration) => {
@@ -1225,7 +1359,7 @@ export default function MapScreen() {
     if (pendingInitialLocationRegionRef.current) {
       mapRef.current?.animateToRegion(
         pendingInitialLocationRegionRef.current,
-        LOCATION_CENTER_ANIMATION_MS
+        INITIAL_MAP_FOCUS_ANIMATION_MS
       );
       pendingInitialLocationRegionRef.current = null;
       return;
@@ -1282,7 +1416,6 @@ export default function MapScreen() {
         });
       }
       dismissPinActionMenu("pin_tap", { logDismiss: false });
-      stopEventCenterHaptics();
       previewOpenRequestIdRef.current += 1;
       const previewRequestId = previewOpenRequestIdRef.current;
       pendingPreviewRequestIdRef.current = previewRequestId;
@@ -1346,7 +1479,6 @@ export default function MapScreen() {
         );
 
         if (previewOpenRequestIdRef.current !== previewRequestId) {
-          stopEventCenterHaptics();
           return;
         }
 
@@ -1355,8 +1487,6 @@ export default function MapScreen() {
           return;
         }
 
-        pendingEventCenterHapticsRequestIdRef.current = previewRequestId;
-        hasStartedEventCenterHapticsRef.current = false;
         eventCenterTimeoutRef.current = setTimeout(() => {
           eventCenterTimeoutRef.current = null;
           openAfterCenteringFallback();
@@ -1384,8 +1514,6 @@ export default function MapScreen() {
       getViewportCenterPoint,
       pathname,
       selectedEvent,
-      startEventCenterHaptics,
-      stopEventCenterHaptics,
     ]
   );
 
@@ -2038,18 +2166,8 @@ export default function MapScreen() {
 
       {isDiscoveryActive && (
         <>
-          <View
-            pointerEvents="none"
-            style={[
-              styles.discoverBorder,
-              {
-                bottom: insets.bottom,
-                left: insets.left,
-                right: insets.right,
-                top: insets.top,
-              },
-            ]}
-          />
+          <View pointerEvents="none" style={styles.discoverSideBorders} />
+
           <DiscoverModePill
             onPress={handleDiscoverDismiss}
             style={[styles.discoverPill, { top: insets.top + 62 }]}
@@ -2179,10 +2297,12 @@ const styles = StyleSheet.create({
     height: 10,
     width: 10,
   },
-  discoverBorder: {
+  discoverSideBorders: {
     ...StyleSheet.absoluteFillObject,
-    borderColor: colors.primary,
-    borderWidth: 5,
+    borderLeftColor: colors.primary,
+    borderLeftWidth: 5,
+    borderRightColor: colors.primary,
+    borderRightWidth: 5,
     zIndex: 3,
   },
   discoverPill: {

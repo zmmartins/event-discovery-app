@@ -28,6 +28,9 @@ a real backend yet.
 - Seed data currently includes 16 published events dated from May 22, 2026 to
   August 9, 2026 across international mock venues, 6 event types, 7 mock users,
   friendships, saved events, participations, and profile experience records.
+- `getUpcomingEvents()` filters seed events by the current runtime date,
+  lifecycle status, capacity, and participation state, so the visible Explore
+  set changes as the mock event dates pass.
 - The default map region and Discovery Mode origin are Lisbon, Portugal.
 - There is no authentication, real API, payments, ticketing, push
   notifications, chat, event publishing flow, or image upload flow.
@@ -36,12 +39,14 @@ Implemented app surfaces:
 
 - Native tab shell with Explore, Messages, Search, Community, and Profile tabs.
 - Explore stack with map, list, shake-discover, and notifications routes.
-- Map discovery with Google Maps, custom event pins, user location, morphing
-  event preview, and long-press pin actions.
+- Map discovery with Google Maps, user-aware initial focus, custom event pins,
+  user location, morphing event preview, Discovery Mode side borders, and
+  long-press pin actions.
 - List discovery with an upcoming-events masonry feed, card save controls, and
   long-press card actions.
 - Event detail screen with generated detail media, a draggable sheet,
-  social context, save/join controls, haptics, and logging.
+  interactive mini map, social context, save/join controls, haptics, and
+  logging.
 - Profile screen with Attended, Going, and Saved sections, section-specific
   list/map selectors, attended memories, attended map pins, and upcoming/saved
   event feeds.
@@ -169,8 +174,9 @@ GOOGLE_MAPS_IOS_API_KEY=...
 GOOGLE_MAPS_ANDROID_API_KEY=...
 ```
 
-The app falls back to the default Lisbon region when user location is
-unavailable or permission is denied.
+Lisbon is the default discovery origin and generic fallback region. The Explore
+map prefers the current user location when available; if location is unavailable
+it falls back to visible event coordinates before using the Lisbon region.
 
 ## Routing
 
@@ -253,9 +259,14 @@ Current behavior:
 - local poster/detail images are warmed offscreen so the first preview opens
   with sharp assets;
 - foreground location is requested through `locationService.js`;
+- initial map focus recalculates on screen focus: regular mode centers on the
+  user and zooms to include the nearest visible event, while Discovery Mode
+  centers on the user and zooms to include all four recommendations;
+- if user location is unavailable, initial focus uses a stable random visible
+  event in regular mode or a stable random recommendation in Discovery Mode;
 - the location status control shows Lisbon, locating, or near-you state and can
   recenter the map when location is available;
-- Discovery Mode adds a visible border and dismissible pill.
+- Discovery Mode adds full-height green side borders and a dismissible pill.
 
 ### List
 
@@ -285,11 +296,15 @@ Current behavior:
 - date, time, category, description, location, friends, and prototype reviews;
 - save/bookmark control with haptic feedback;
 - participation action through `joinEvent(id)`;
-- static drawn map preview rather than a live map;
+- live Google-provider mini map styled with `APP_MAP_STYLE`;
+- custom event-location pin, optional current-user location marker, and an
+  icon-only recenter button;
+- one-finger drags over the mini map move the detail sheet, while two-finger
+  pan and pinch gestures control the mini map;
 - interaction logging for detail opening, back, sheet movement, save, and join.
 
-Some supporting content is intentionally prototype-grade, including the static
-map preview and review-card copy.
+Some supporting content is intentionally prototype-grade, including the
+review-card copy.
 
 ### Profile
 
@@ -557,6 +572,7 @@ Design intent:
 - editorial poster previews for map discovery;
 - image-led two-column browsing in list views;
 - event-centered social proof;
+- real map context on both Explore and Event Detail surfaces;
 - compact mobile-first layouts;
 - large touch targets;
 - high-contrast active states;
@@ -569,7 +585,8 @@ Design intent:
 - Filter and share actions are logged placeholders.
 - There is no real backend; local mutations reset on reload.
 - Going and Saved profile map views are placeholders.
-- Event detail uses a static drawn map preview and prototype review copy.
+- Event detail review copy is placeholder text, and the mini map does not yet
+  expose external directions or deep-link map actions.
 - Web is not a supported validation target for the current map-heavy route
   graph.
 - There is no dedicated in-app screen for viewing or exporting interaction
