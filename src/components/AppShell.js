@@ -1,5 +1,5 @@
-import { StyleSheet, View } from "react-native";
 import { usePathname } from "expo-router";
+import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDiscoveryMode } from "../context/DiscoveryModeContext";
@@ -7,7 +7,7 @@ import { colors } from "../theme/colors";
 import TopNav from "./TopNav";
 
 const discoveryRoutes = ["/map", "/map/list", "/map/shake-discover"];
-const edgeToEdgeRoutes = ["/map", "/map/list"];
+const edgeToEdgeRoutes = ["/map", "/map/list", "/map/shake-discover"];
 
 function normalizePathname(pathname) {
   if (!pathname || pathname === "/") return "/";
@@ -36,11 +36,7 @@ export default function AppShell({ children }) {
         style={[
           styles.content,
           {
-            paddingTop: isEdgeToEdge
-              ? 0
-              : showTopNav
-                ? insets.top + 84
-                : insets.top + 24,
+            paddingTop: isEdgeToEdge ? 0 : showTopNav ? insets.top + 84 : insets.top + 24,
           },
         ]}
       >
@@ -54,12 +50,14 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
+    overflow: "visible",
   },
   discoverRoot: {
     backgroundColor: colors.primary,
   },
   content: {
     flex: 1,
+    overflow: "visible",
   },
   topNav: {
     position: "absolute",

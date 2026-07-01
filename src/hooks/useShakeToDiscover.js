@@ -14,6 +14,8 @@ const PROCESSING_MS = 1700;
 const PROGRESS_INTERVAL_MS = 80;
 
 export default function useShakeToDiscover({
+  confirmationFeedbackEnabled = true,
+  disabled = false,
   enabled = true,
   onShakeComplete,
   onShakeStart,
@@ -37,7 +39,7 @@ export default function useShakeToDiscover({
   }, []);
 
   const startShakeFlow = useCallback(() => {
-    if (!enabled || isProcessingRef.current) return;
+    if (!enabled || disabled || isProcessingRef.current) return;
 
     isProcessingRef.current = true;
     setIsShaking(true);
@@ -61,17 +63,31 @@ export default function useShakeToDiscover({
     completionTimeoutRef.current = setTimeout(async () => {
       clearTimers();
       setShakeProgress(1);
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
-        () => null,
-      );
+      if (confirmationFeedbackEnabled) {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+          () => null,
+        );
+      }
       setIsShaking(false);
       isProcessingRef.current = false;
       await onShakeComplete?.();
     }, PROCESSING_MS);
-  }, [clearTimers, enabled, onShakeComplete, onShakeStart]);
+  }, [
+    clearTimers,
+    confirmationFeedbackEnabled,
+    disabled,
+    enabled,
+    onShakeComplete,
+    onShakeStart,
+  ]);
 
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!enabled || disabled) {
+      clearTimers();
+      Vibration.cancel();
+      isProcessingRef.current = false;
+      return undefined;
+    }
 
     Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
     const subscription = Accelerometer.addListener(({ x, y, z }) => {
@@ -88,7 +104,7 @@ export default function useShakeToDiscover({
       clearTimers();
       isProcessingRef.current = false;
     };
-  }, [clearTimers, enabled, startShakeFlow]);
+  }, [clearTimers, disabled, enabled, startShakeFlow]);
 
   return {
     isShaking,

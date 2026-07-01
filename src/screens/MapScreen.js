@@ -9,6 +9,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  Vibration,
   View,
   useWindowDimensions,
 } from "react-native";
@@ -63,6 +64,8 @@ const PREVIEW_MAX_CARD_HEIGHT = 680;
 const LOCATION_CENTER_ANIMATION_MS = 700;
 const EVENT_CENTER_ANIMATION_MS = 220;
 const EVENT_PREVIEW_FALLBACK_DELAY_MS = EVENT_CENTER_ANIMATION_MS + 140;
+const EVENT_CENTER_CONTINUOUS_VIBRATION_MS = 900;
+const EVENT_CENTER_VIBRATION_MAX_DURATION_MS = EVENT_PREVIEW_FALLBACK_DELAY_MS + 160;
 const EVENT_CENTER_SCREEN_TOLERANCE_POINTS = 8;
 const EVENT_CENTER_TOLERANCE_METERS = 30;
 const USER_CENTER_TOLERANCE_METERS = 80;
@@ -370,6 +373,20 @@ function getEventCoordinate(event) {
   };
 }
 
+function isRegionCenteredOnEvent(region, event) {
+  if (!region || !event) return false;
+
+  return (
+    getCoordinateDistanceMeters(
+      {
+        latitude: region.latitude,
+        longitude: region.longitude,
+      },
+      getEventCoordinate(event)
+    ) <= EVENT_CENTER_TOLERANCE_METERS
+  );
+}
+
 function getValidScreenPoint(point) {
   if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) return null;
 
@@ -420,6 +437,7 @@ export default function MapScreen() {
   const pendingPinTapTargetRef = useRef(null);
   const suppressNativeMarkerPressUntilRef = useRef(0);
   const eventCenterTimeoutRef = useRef(null);
+  const eventCenterHapticTimeoutRef = useRef(null);
   const posterWarmupStatusRef = useRef({});
   const previewOpenRequestIdRef = useRef(0);
   const pinActionDismissTimeoutRef = useRef(null);
@@ -432,6 +450,8 @@ export default function MapScreen() {
   const isPinActionInteractionActiveRef = useRef(false);
   const isRecenteringOnEventRef = useRef(false);
   const hasDismissedPreviewByGestureRef = useRef(false);
+  const pendingEventCenterHapticsRequestIdRef = useRef(null);
+  const hasStartedEventCenterHapticsRef = useRef(false);
 
   const [events, setEvents] = useState([]);
   const [loadedPinImages, setLoadedPinImages] = useState({});
@@ -459,8 +479,32 @@ export default function MapScreen() {
     screen: "MapScreen",
   });
 
+  const stopEventCenterHaptics = useCallback(() => {
+    Vibration.cancel();
+
+    if (eventCenterHapticTimeoutRef.current) {
+      clearTimeout(eventCenterHapticTimeoutRef.current);
+      eventCenterHapticTimeoutRef.current = null;
+    }
+
+    pendingEventCenterHapticsRequestIdRef.current = null;
+    hasStartedEventCenterHapticsRef.current = false;
+  }, []);
+
+  const startEventCenterHaptics = useCallback(() => {
+    stopEventCenterHaptics();
+
+    Vibration.vibrate([0, EVENT_CENTER_CONTINUOUS_VIBRATION_MS], true);
+
+    eventCenterHapticTimeoutRef.current = setTimeout(() => {
+      stopEventCenterHaptics();
+    }, EVENT_CENTER_VIBRATION_MAX_DURATION_MS);
+  }, [stopEventCenterHaptics]);
+
   useEffect(() => {
     return () => {
+      stopEventCenterHaptics();
+
       if (eventCenterTimeoutRef.current) {
         clearTimeout(eventCenterTimeoutRef.current);
         eventCenterTimeoutRef.current = null;
@@ -488,7 +532,7 @@ export default function MapScreen() {
       suppressMapGestureUntilRef.current = 0;
       suppressPinPressRef.current = null;
     };
-  }, []);
+  }, [stopEventCenterHaptics]);
 
   const handlePinImageLoad = useCallback((eventId) => {
     requestAnimationFrame(() => {
@@ -541,6 +585,8 @@ export default function MapScreen() {
   );
 
   const cancelPendingEventPreview = useCallback(() => {
+    stopEventCenterHaptics();
+
     pendingPreviewEventRef.current = null;
     pendingPreviewRequestIdRef.current = null;
     isRecenteringOnEventRef.current = false;
@@ -550,7 +596,7 @@ export default function MapScreen() {
       clearTimeout(eventCenterTimeoutRef.current);
       eventCenterTimeoutRef.current = null;
     }
-  }, []);
+  }, [stopEventCenterHaptics]);
 
   const centerMapOnRegion = useCallback((region, duration) => {
     currentRegionRef.current = region;
@@ -717,6 +763,10 @@ export default function MapScreen() {
     setSelectedEvent(null);
   }, []);
 
+  const handlePreviewOpenComplete = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => null);
+  }, []);
+
   const closePreview = useCallback(
     (reason) => {
       if (selectedEvent && reason) {
@@ -748,9 +798,27 @@ export default function MapScreen() {
     [closePreview, selectedEvent]
   );
 
-  const handleRegionChange = useCallback((region) => {
-    currentRegionRef.current = region;
-  }, []);
+  const handleRegionChange = useCallback(
+    (region) => {
+      currentRegionRef.current = region;
+      const pendingPreviewEvent = pendingPreviewEventRef.current;
+      const pendingHapticsRequestId = pendingEventCenterHapticsRequestIdRef.current;
+      if (
+        !pendingPreviewEvent ||
+        !pendingHapticsRequestId ||
+        hasStartedEventCenterHapticsRef.current ||
+        !isRecenteringOnEventRef.current
+      ) {
+        return;
+      }
+      if (isRegionCenteredOnEvent(region, pendingPreviewEvent)) {
+        return;
+      }
+      hasStartedEventCenterHapticsRef.current = true;
+      startEventCenterHaptics();
+    },
+    [startEventCenterHaptics]
+  );
 
   const handleMapLayout = useCallback((layoutEvent) => {
     const { height, width } = layoutEvent.nativeEvent.layout;
@@ -1029,6 +1097,8 @@ export default function MapScreen() {
 
   const completePendingPreviewOpen = useCallback(
     (event, previewRequestId) => {
+      stopEventCenterHaptics();
+
       if (eventCenterTimeoutRef.current) {
         clearTimeout(eventCenterTimeoutRef.current);
         eventCenterTimeoutRef.current = null;
@@ -1043,7 +1113,11 @@ export default function MapScreen() {
         openPreviewForEventAtCurrentPinPosition(event, previewRequestId);
       }
     },
-    [openPreviewForEventAtCurrentPinPosition, refreshEventPinTouchPoints]
+    [
+      openPreviewForEventAtCurrentPinPosition,
+      refreshEventPinTouchPoints,
+      stopEventCenterHaptics,
+    ]
   );
 
   const animateMapCameraToCoordinate = useCallback(async (coordinate, duration) => {
@@ -1055,6 +1129,15 @@ export default function MapScreen() {
 
     try {
       const camera = map.getCamera ? await map.getCamera() : null;
+      const currentCameraCenter = camera?.center;
+
+      if (
+        currentCameraCenter &&
+        getCoordinateDistanceMeters(currentCameraCenter, coordinate) <=
+          EVENT_CENTER_TOLERANCE_METERS
+      ) {
+        return false;
+      }
 
       if (!isMapReadyRef.current || mapRef.current !== map) {
         return false;
@@ -1199,6 +1282,7 @@ export default function MapScreen() {
         });
       }
       dismissPinActionMenu("pin_tap", { logDismiss: false });
+      stopEventCenterHaptics();
       previewOpenRequestIdRef.current += 1;
       const previewRequestId = previewOpenRequestIdRef.current;
       pendingPreviewRequestIdRef.current = previewRequestId;
@@ -1239,6 +1323,10 @@ export default function MapScreen() {
           completePendingPreviewOpen(event, previewRequestId);
           return;
         }
+        if (isRegionCenteredOnEvent(currentRegionRef.current, event)) {
+          completePendingPreviewOpen(event, previewRequestId);
+          return;
+        }
 
         if (!isMapReadyRef.current || !mapRef.current) {
           const currentRegion = currentRegionRef.current || LISBON_REGION;
@@ -1258,6 +1346,7 @@ export default function MapScreen() {
         );
 
         if (previewOpenRequestIdRef.current !== previewRequestId) {
+          stopEventCenterHaptics();
           return;
         }
 
@@ -1266,6 +1355,8 @@ export default function MapScreen() {
           return;
         }
 
+        pendingEventCenterHapticsRequestIdRef.current = previewRequestId;
+        hasStartedEventCenterHapticsRef.current = false;
         eventCenterTimeoutRef.current = setTimeout(() => {
           eventCenterTimeoutRef.current = null;
           openAfterCenteringFallback();
@@ -1293,6 +1384,8 @@ export default function MapScreen() {
       getViewportCenterPoint,
       pathname,
       selectedEvent,
+      startEventCenterHaptics,
+      stopEventCenterHaptics,
     ]
   );
 
@@ -1970,6 +2063,7 @@ export default function MapScreen() {
           geometry={previewGeometry}
           onCloseComplete={handlePreviewCloseComplete}
           onOpen={openSelectedEvent}
+          onOpenComplete={handlePreviewOpenComplete}
           onSavedChange={handlePreviewSavedChange}
           progressValue={previewProgress}
           ref={morphPreviewRef}

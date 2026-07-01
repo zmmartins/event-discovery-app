@@ -7,7 +7,7 @@ export default function MapLayout() {
   return (
     <DiscoveryModeProvider>
       <AppShell>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ animation: "none", headerShown: false }} />
       </AppShell>
     </DiscoveryModeProvider>
   );

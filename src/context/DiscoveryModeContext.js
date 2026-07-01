@@ -26,6 +26,8 @@ function orderByDiscoveryIds(events, eventIds) {
 export function DiscoveryModeProvider({ children }) {
   const [isDiscoveryActive, setIsDiscoveryActive] = useState(false);
   const [discoverEventIds, setDiscoverEventIds] = useState([]);
+  const [pendingDiscoveryTransition, setPendingDiscoveryTransition] =
+    useState(null);
 
   const activateDiscoveryMode = useCallback(async (metadata = {}) => {
     const discoverEvents = await getDiscoverEvents({
@@ -37,6 +39,14 @@ export function DiscoveryModeProvider({ children }) {
 
     setDiscoverEventIds(nextEventIds);
     setIsDiscoveryActive(true);
+
+    if (metadata.transitionType) {
+      setPendingDiscoveryTransition({
+        id: `${metadata.transitionType}-${Date.now()}`,
+        source: metadata.source ?? "unknown",
+        type: metadata.transitionType,
+      });
+    }
 
     logInteraction(LOG_ACTIONS.discoverModeActivated, {
       ...metadata,
@@ -66,9 +76,14 @@ export function DiscoveryModeProvider({ children }) {
 
       setDiscoverEventIds([]);
       setIsDiscoveryActive(false);
+      setPendingDiscoveryTransition(null);
     },
     [discoverEventIds, isDiscoveryActive],
   );
+
+  const consumeDiscoveryTransition = useCallback(() => {
+    setPendingDiscoveryTransition(null);
+  }, []);
 
   const filterDiscoveryEvents = useCallback(
     (events) => {
@@ -82,17 +97,21 @@ export function DiscoveryModeProvider({ children }) {
   const value = useMemo(
     () => ({
       activateDiscoveryMode,
+      consumeDiscoveryTransition,
       deactivateDiscoveryMode,
       discoverEventIds,
       filterDiscoveryEvents,
       isDiscoveryActive,
+      pendingDiscoveryTransition,
     }),
     [
       activateDiscoveryMode,
+      consumeDiscoveryTransition,
       deactivateDiscoveryMode,
       discoverEventIds,
       filterDiscoveryEvents,
       isDiscoveryActive,
+      pendingDiscoveryTransition,
     ],
   );
 
@@ -109,10 +128,12 @@ export function useDiscoveryMode() {
   if (!context) {
     return {
       activateDiscoveryMode: async () => [],
+      consumeDiscoveryTransition: () => {},
       deactivateDiscoveryMode: () => {},
       discoverEventIds: [],
       filterDiscoveryEvents: (events) => events,
       isDiscoveryActive: false,
+      pendingDiscoveryTransition: null,
     };
   }
 

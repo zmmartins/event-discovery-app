@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { usePathname } from "expo-router";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -9,6 +10,7 @@ import Animated, {
   interpolate,
   interpolateColor,
   runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -59,6 +61,8 @@ const POSTER_TITLE_MIN_WORD_CHARS = 3;
 
 const ACTION_BUTTON_SIZE = 48;
 const ACTION_ICON_SIZE = 34;
+const ACTION_BUTTON_HAPTIC_MIN_GAP_MS = 80;
+const ACTION_BUTTON_POST_RELEASE_NAVIGATION_DELAY_MS = 90;
 
 const CARD_AVATAR_SIZE = 24;
 const CARD_AVATAR_BORDER_WIDTH = 1.5;
@@ -74,6 +78,7 @@ const ACTION_BACKGROUND_COLOR = colors.text;
 const ACTION_TEXT_COLOR = colors.surface;
 
 const POSTER_IMAGE_FADE_IN_MS = 180;
+const POSTER_OPEN_HAPTIC_PROGRESS = 0.985;
 const SKELETON_SHIMMER_DURATION_MS = 1150;
 const SKELETON_PULSE_DURATION_MS = 900;
 const PIN_IMAGE_FADE_OUT_START = 0.08;
@@ -95,6 +100,12 @@ const POSTER_MONTH_LABELS = [
   "NOV",
   "DEC",
 ];
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 function formatPosterTime(value) {
   const rawTime = String(value ?? "").trim();
@@ -512,6 +523,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     geometry,
     onCloseComplete,
     onOpen,
+    onOpenComplete,
     progressValue,
     screen = "MapScreen",
     source = "map_preview",
@@ -524,7 +536,11 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
   const skeletonShimmerProgress = useSharedValue(0);
   const skeletonPulseProgress = useSharedValue(0);
   const progress = progressValue ?? internalProgress;
+  const actionButtonPressInAtRef = useRef(0);
+  const actionButtonReleaseHapticPromiseRef = useRef(null);
+  const actionButtonReleaseHapticTimeoutRef = useRef(null);
   const closeReasonRef = useRef(null);
+  const hasCompletedOpenAnimationRef = useRef(false);
   const isClosingRef = useRef(false);
 
   const layout = getSessionEventPinLayout(event);
@@ -576,8 +592,18 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     event.organizerName ?? event.establishmentName ?? event.hostName ?? "LisTunes";
   const posterDate = getPosterDateParts(event);
 
+  const finishOpenAnimation = useCallback(() => {
+    if (isClosingRef.current || hasCompletedOpenAnimationRef.current) {
+      return;
+    }
+
+    hasCompletedOpenAnimationRef.current = true;
+    onOpenComplete?.();
+  }, [onOpenComplete]);
+
   useEffect(() => {
     isClosingRef.current = false;
+    hasCompletedOpenAnimationRef.current = false;
     posterImageReady.value = 0;
     skeletonShimmerProgress.value = 0;
     skeletonPulseProgress.value = 0;
@@ -608,16 +634,33 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     });
 
     return () => {
+      if (actionButtonReleaseHapticTimeoutRef.current) {
+        clearTimeout(actionButtonReleaseHapticTimeoutRef.current);
+        actionButtonReleaseHapticTimeoutRef.current = null;
+      }
+      actionButtonReleaseHapticPromiseRef.current = null;
+
       cancelAnimation(skeletonShimmerProgress);
       cancelAnimation(skeletonPulseProgress);
     };
   }, [
     event.id,
+    finishOpenAnimation,
     posterImageReady,
     progress,
     skeletonPulseProgress,
     skeletonShimmerProgress,
   ]);
+
+  useAnimatedReaction(
+    () => progress.value >= POSTER_OPEN_HAPTIC_PROGRESS,
+    (isVisuallyOpen, wasVisuallyOpen) => {
+      if (isVisuallyOpen && !wasVisuallyOpen) {
+        runOnJS(finishOpenAnimation)();
+      }
+    },
+    [finishOpenAnimation]
+  );
 
   const handlePosterImageLoad = useCallback(() => {
     posterImageReady.value = withTiming(1, {
@@ -885,14 +928,51 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     };
   }, [finalCardHeight, geometry.width, layout.outerSize]);
 
-  function handleOpenPress() {
+  function playReleaseHapticAfterMinimumGap() {
+    const elapsed = Date.now() - actionButtonPressInAtRef.current;
+    const delay = Math.max(0, ACTION_BUTTON_HAPTIC_MIN_GAP_MS - elapsed);
+
+    if (actionButtonReleaseHapticTimeoutRef.current) {
+      clearTimeout(actionButtonReleaseHapticTimeoutRef.current);
+      actionButtonReleaseHapticTimeoutRef.current = null;
+    }
+
+    const releaseHapticPromise = wait(delay)
+      .then(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light))
+      .catch(() => null)
+      .then(() => wait(ACTION_BUTTON_POST_RELEASE_NAVIGATION_DELAY_MS));
+
+    actionButtonReleaseHapticPromiseRef.current = releaseHapticPromise;
+
+    return releaseHapticPromise;
+  }
+
+  async function handleOpenPress() {
     logInteraction(LOG_ACTIONS.eventCardPressed, {
       eventId: event.id,
       route: pathname,
       screen,
       source,
     }).catch(() => null);
+
+    const releaseHapticPromise =
+      actionButtonReleaseHapticPromiseRef.current ??
+      playReleaseHapticAfterMinimumGap();
+
+    await releaseHapticPromise;
+
+    actionButtonReleaseHapticPromiseRef.current = null;
+
     onOpen?.();
+  }
+
+  function handleOpenPressIn() {
+    actionButtonPressInAtRef.current = Date.now();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => null);
+  }
+
+  function handleOpenPressOut() {
+    playReleaseHapticAfterMinimumGap();
   }
 
   return (
@@ -1062,6 +1142,8 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
             accessibilityLabel={`Open details for ${event.title}`}
             accessibilityRole="button"
             onPress={handleOpenPress}
+            onPressIn={handleOpenPressIn}
+            onPressOut={handleOpenPressOut}
             style={({ pressed }) => [styles.arrowButton, pressed && styles.pressed]}
           >
             <Ionicons
