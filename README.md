@@ -9,8 +9,9 @@ shake-to-discover, location awareness, haptic feedback, and interaction logging
 for usability testing.
 
 The current project is a native-focused Expo prototype. It uses local mock data,
-generated local image variants, and backend-shaped repository/service boundaries,
-but it does not currently connect to a real backend.
+original local event imagery, generated image variants, and backend-shaped
+repository/service boundaries, but it does not currently connect to a real
+backend.
 
 ## Current Snapshot
 
@@ -18,8 +19,8 @@ but it does not currently connect to a real backend.
 - JavaScript for most app code, with TypeScript/TSX route files and layouts.
 - Native-first validation target: iOS or Android. The route graph imports
   `react-native-maps`, so the web target is not considered ready.
-- Local mock event calendar dated June 2026.
-- Default map and discovery origin: Lisbon, Portugal.
+- Local mock event calendar with 16 June 2026 events across Portuguese cities.
+- Default map and Discovery Mode origin: Lisbon, Portugal.
 - Single app icon asset at `assets/images/icon.png`, reused for native icons,
   Android adaptive icon foreground/monochrome image, web favicon, and splash.
 - No authentication, backend API, payments, ticketing, chat, push notifications,
@@ -29,9 +30,10 @@ Implemented surfaces:
 
 - Native tab shell with Explore, Messages, Search, Community, and Profile tabs.
 - Explore stack with map, list, shake-discover, and notifications routes.
-- Google-provider map with custom event pins, custom user-location marker,
-  long-press pin action menu, animated poster preview, and event-detail
-  navigation.
+- Google-provider map with custom popularity-scaled event pins, custom
+  user-location marker, priority-based overlap tap/long-press resolution,
+  measured pin-to-poster morph previews, long-press pin action menu, and
+  event-detail navigation.
 - Discovery list with two-column image cards, attendee stacks, bookmark
   toggling, and Discovery Mode filtering.
 - Event detail screen with generated detail media, social context, draggable
@@ -137,10 +139,13 @@ Runtime/native configuration is split between `app.json` and `app.config.js`.
 
 - sets the app name, slug, portrait orientation, light UI style, scheme, and new
   architecture flag;
+- sets the iOS bundle identifier;
 - uses `assets/images/icon.png` as the top-level Expo icon;
 - uses the same `assets/images/icon.png` for Android adaptive icon foreground
   and monochrome image;
 - sets the Android adaptive icon background color to `#E6F4FE`;
+- enables Android edge-to-edge rendering and disables Android predictive back
+  gesture handling;
 - uses the same icon as the web favicon;
 - configures `expo-splash-screen` to use the same icon with `contain` resize,
   white light background, and black dark background;
@@ -148,8 +153,7 @@ Runtime/native configuration is split between `app.json` and `app.config.js`.
 
 `app.config.js` currently:
 
-- sets the iOS bundle identifier and Android package to
-  `com.eventdiscovery.app`;
+- keeps the native application identifier aligned as `com.eventdiscovery.app`;
 - injects iOS and Android foreground-location permission configuration;
 - reads native Google Maps keys from environment variables;
 - ensures the `expo-font` plugin is present.
@@ -233,6 +237,7 @@ scripts/                      Local maintenance scripts
 src/assets/avatars/           Mock avatar images
 src/assets/events/            Source mock event images
 src/assets/events/pins/       Generated 160x160 pin images
+src/assets/events/posters/    Generated 1200x1200 morph-poster fallbacks
 src/assets/events/previews/   Generated max-900px preview/card images
 src/assets/events/details/    Generated max-1600px detail images
 src/components/               Reusable UI components
@@ -296,33 +301,61 @@ Current behavior:
 
 - Events render as custom React marker children through `EventPin`.
 - Pin size is based on event popularity.
+- Pin `zIndex` and marker render order also follow event popularity, so more
+  popular pins naturally sit above lower-popularity pins.
 - Friend presence adds the secondary-color ring around pins.
 - Marker keys are stable by `event.id`.
 - `tracksViewChanges` stays enabled only until each pin image finishes loading.
-- Tapping a pin opens the expanded preview.
+- Pins are not clustered, hidden, or replaced with count badges. Naturally
+  overlapping pins stay rendered as normal map markers.
+- Tapping a pin or an overlapping stack resolves the intended top pin with
+  screen-space hit testing, centers the map on that event, and opens the
+  expanded preview.
+- When React Native Maps reports an overlapped tap as a map-level press instead
+  of a marker press, the map consumes the pending top-pin target and follows the
+  same event-centering flow. A short suppression window prevents a duplicate
+  native marker press from overriding that choice.
 - Long-pressing a pin opens `EventPinActionMenu` with expand, share, and save
   actions.
+- Long-pressing an overlapping stack also resolves to the highest-priority
+  visible pin under the finger.
+- Expand and save are functional from the pin action menu. Share currently logs
+  a placeholder action.
+- Panning from a pin remains map-first: movement before long-press activation
+  cancels pending pin selection.
 - The pin action menu chooses a fan direction from available screen space and
-  avoids top/bottom chrome and nearby pins where possible.
+  avoids top/bottom chrome.
 - The expanded preview is a React Native overlay rendered by
   `MorphingEventPreview`, not a map marker.
+- Preview open/close geometry is based on the selected event's current
+  `map.pointForCoordinate(...)` screen projection, with viewport center used
+  only as a fallback. This keeps the morph origin aligned with the real native
+  marker even after ambiguous stacked taps or slightly imperfect map animation.
+- The map keeps a hidden offscreen image warm-up layer mounted so local bundled
+  poster/detail assets decode before the first preview animation needs them.
 - Opening or closing a preview does not intentionally remount or hide the marker
   layer.
+- The user-location marker is separate from event pins, remains above event
+  markers, and is not included in event hit testing.
 - The map requests foreground location through `locationService.js`, recenters
   when possible, and logs permission/location outcomes.
 - The location-status control shows Lisbon, locating, or near-you state and can
   recenter the map when location is available.
 
-`MorphingEventPreview.js` is currently back to a basic solid poster treatment.
-The previous glare, reflection, shadow, and 3D/laminated poster effects have
-been removed. The retained preview behavior is functional animation and image
-quality:
+`MorphingEventPreview.js` uses a simple solid poster treatment with functional
+animation and careful image loading:
 
-- pin image morphs into the poster image area;
-- poster body is a simple solid surface;
-- poster content converges toward the pin center while scaling down on close;
-- low-resolution pin image stays visible during the early expansion;
-- higher-resolution preview image crossfades in slightly later.
+- the real map marker can keep using its low-resolution pin image, but the
+  overlay thumbnail uses `getEventPosterImage(event.thumbnailKey)`;
+- the poster image is mounted immediately inside the morphing thumbnail clip;
+- at progress `0`, that clip is a small circle at the measured map-projected
+  pin position supplied by `MapScreen`, and at progress `1`, it becomes the
+  square expanded poster thumbnail;
+- once the poster image has loaded, it fades in and scales with the overlay
+  during both open and close;
+- an animated skeleton/shimmer is visible only while the poster image has not
+  loaded yet;
+- no low-resolution pin image is rendered inside the expanded poster thumbnail.
 
 ### List
 
@@ -398,8 +431,10 @@ Source event images live directly under `src/assets/events`. Generated variants
 live in:
 
 - `src/assets/events/pins`: 160x160 JPG square crops for map marker snapshots.
+- `src/assets/events/posters`: 1200x1200 JPG square crops used as morphing
+  poster fallbacks.
 - `src/assets/events/previews`: JPG images resized to fit within 900px on the
-  longest side for cards, posters, lists, and profile memories.
+  longest side for cards, lists, and profile memories.
 - `src/assets/events/details`: JPG images resized to fit within 1600px on the
   longest side for event detail media.
 
@@ -412,19 +447,27 @@ npm run images:events
 The generator is `scripts/generate-event-image-variants.js`. It uses Sharp,
 accepts `.jpg`, `.jpeg`, `.png`, and `.webp` source files, writes deterministic
 names such as `art_gallery1_pin.jpg`, and ignores the generated `pins`,
-`previews`, and `details` folders so variants are not processed again.
+`posters`, `previews`, and `details` folders so variants are not processed
+again.
 
 Image lookup is centralized in `src/utils/imageAssets.js`:
 
 - `getEventPinImage(key)` for map pins and profile experience pins.
-- `getEventPreviewImage(key)` for cards, poster previews, list images, and
-  profile memory tiles.
+- `getEventPosterImage(key)` for the map pin to poster morph thumbnail. It
+  prefers original source images first, then detail images, generated poster
+  fallbacks, previews, and finally pin images.
+- `getEventPreviewImage(key)` for cards, list images, and profile memory tiles.
 - `getEventDetailImage(key)` for event detail media.
 - `getEventImage(key)` remains as a backward-compatible alias to preview images.
 
 `imageAssets.js` also keeps legacy keys such as `art-gallery`, `film-night`, and
 `rooftop-jazz` so existing profile photo refs resolve to current generated event
 images.
+
+`MapScreen.js` uses `Image.prefetch()` as a remote-image optimization and also
+mounts invisible offscreen poster/detail images to force local bundled asset
+decode. This avoids the map poster preview looking soft until after the user has
+visited an event detail page once.
 
 Do not manually edit generated variants. Update the source image, then rerun
 `npm run images:events`.
@@ -608,8 +651,9 @@ Design intent:
 - Keep the map marker layer stable. Preview open/close state should not drive
   marker remounting, marker opacity, or marker image refreshes.
 - Keep the poster preview visually simple unless intentionally reintroducing a
-  new effect. Current desired state is solid poster surface plus the functional
-  image-quality crossfade.
+  new effect. Current desired state is a solid poster surface, a high-resolution
+  poster image mounted from the start of the morphing overlay, and skeleton
+  fallback only while that image is not ready.
 - Regenerate event image variants with `npm run images:events` after adding or
   changing source event images.
 - Prefer Expo-compatible dependencies. Add new dependencies only when they solve
@@ -638,7 +682,8 @@ npm run images:events
 
 Manual smoke checks for meaningful app changes:
 
-- open `/map`, confirm pins render and selecting a pin opens the poster preview;
+- open `/map`, confirm pins render and selecting a pin opens a sharp poster
+  preview on the first attempt without visiting detail first;
 - long-press a map pin and confirm expand/share/save actions appear in a usable
   position;
 - open `/map/list`, confirm the two-column feed renders and saved state toggles;

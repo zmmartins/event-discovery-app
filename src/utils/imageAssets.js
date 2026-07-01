@@ -8,11 +8,19 @@ const avatarImages = {
 };
 
 // Event image variants:
+// - source: original event images, highest-quality local assets
 // - pin: tiny images for map marker snapshots
-// - preview: medium images for cards/posters/lists
+// - poster: square generated fallbacks for map pin to poster morphs
+// - preview: medium images for cards/lists/profile memories
 // - detail: larger images for event detail screens
 //
 // `getEventImage` is kept as a backward-compatible alias to preview images.
+const legacyEventImageKeys = {
+  "art-gallery": "art_gallery1",
+  "film-night": "concert",
+  "rooftop-jazz": "sunset1",
+};
+
 const eventPinImages = {
   "art-gallery": require("../assets/events/pins/art_gallery1_pin.jpg"),
   "film-night": require("../assets/events/pins/concert_pin.jpg"),
@@ -33,6 +41,44 @@ const eventPinImages = {
   party2: require("../assets/events/pins/party2_pin.jpg"),
   sunset1: require("../assets/events/pins/sunset1_pin.jpg"),
   sunset2: require("../assets/events/pins/sunset2_pin.jpg"),
+};
+
+const eventSourceImages = {
+  art_gallery1: require("../assets/events/art_gallery1.jpg"),
+  art_gallery2: require("../assets/events/art_gallery2.jpg"),
+  art_gallery3: require("../assets/events/art_gallery3.jpg"),
+  baking_class1: require("../assets/events/baking_class1.jpg"),
+  baking_class2: require("../assets/events/baking_class2.jpg"),
+  baking_class3: require("../assets/events/baking_class3.jpg"),
+  club1: require("../assets/events/club1.jpg"),
+  club3: require("../assets/events/club3.jpg"),
+  club4: require("../assets/events/club4.jpg"),
+  concert: require("../assets/events/concert.jpg"),
+  festival1: require("../assets/events/festival1.jpg"),
+  festival2: require("../assets/events/festival2.jpg"),
+  party1: require("../assets/events/party1.jpg"),
+  party2: require("../assets/events/party2.jpg"),
+  sunset1: require("../assets/events/sunset1.jpg"),
+  sunset2: require("../assets/events/sunset2.jpg"),
+};
+
+const eventPosterImages = {
+  art_gallery1: require("../assets/events/posters/art_gallery1_poster.jpg"),
+  art_gallery2: require("../assets/events/posters/art_gallery2_poster.jpg"),
+  art_gallery3: require("../assets/events/posters/art_gallery3_poster.jpg"),
+  baking_class1: require("../assets/events/posters/baking_class1_poster.jpg"),
+  baking_class2: require("../assets/events/posters/baking_class2_poster.jpg"),
+  baking_class3: require("../assets/events/posters/baking_class3_poster.jpg"),
+  club1: require("../assets/events/posters/club1_poster.jpg"),
+  club3: require("../assets/events/posters/club3_poster.jpg"),
+  club4: require("../assets/events/posters/club4_poster.jpg"),
+  concert: require("../assets/events/posters/concert_poster.jpg"),
+  festival1: require("../assets/events/posters/festival1_poster.jpg"),
+  festival2: require("../assets/events/posters/festival2_poster.jpg"),
+  party1: require("../assets/events/posters/party1_poster.jpg"),
+  party2: require("../assets/events/posters/party2_poster.jpg"),
+  sunset1: require("../assets/events/posters/sunset1_poster.jpg"),
+  sunset2: require("../assets/events/posters/sunset2_poster.jpg"),
 };
 
 const eventPreviewImages = {
@@ -81,20 +127,59 @@ const eventDetailImages = {
 
 export const eventImages = eventPreviewImages;
 
+function normalizeEventImageKey(key) {
+  const rawKey = String(key ?? "").trim();
+
+  return legacyEventImageKeys[rawKey] ?? rawKey;
+}
+
 export function getAvatarImage(key) {
   return avatarImages[key] ?? avatarImages.ana;
 }
 
 export function getEventPinImage(key) {
-  return eventPinImages[key] ?? eventPinImages["art-gallery"];
+  const normalizedKey = normalizeEventImageKey(key);
+
+  return (
+    eventPinImages[normalizedKey] ?? eventPinImages[key] ?? eventPinImages.art_gallery1
+  );
+}
+
+export function getEventPosterImage(key) {
+  const normalizedKey = normalizeEventImageKey(key);
+
+  return (
+    eventSourceImages[normalizedKey] ??
+    eventSourceImages[key] ??
+    eventDetailImages[normalizedKey] ??
+    eventDetailImages[key] ??
+    eventPosterImages[normalizedKey] ??
+    eventPreviewImages[normalizedKey] ??
+    eventPreviewImages[key] ??
+    eventPinImages[normalizedKey] ??
+    eventPinImages[key] ??
+    eventPreviewImages.art_gallery1
+  );
 }
 
 export function getEventPreviewImage(key) {
-  return eventPreviewImages[key] ?? eventPreviewImages["art-gallery"];
+  const normalizedKey = normalizeEventImageKey(key);
+
+  return (
+    eventPreviewImages[normalizedKey] ??
+    eventPreviewImages[key] ??
+    eventPreviewImages.art_gallery1
+  );
 }
 
 export function getEventDetailImage(key) {
-  return eventDetailImages[key] ?? eventDetailImages["art-gallery"];
+  const normalizedKey = normalizeEventImageKey(key);
+
+  return (
+    eventDetailImages[normalizedKey] ??
+    eventDetailImages[key] ??
+    eventDetailImages.art_gallery1
+  );
 }
 
 export function getEventImage(key) {

@@ -5,11 +5,13 @@ import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native
 import Animated, {
   Easing,
   Extrapolation,
+  cancelAnimation,
   interpolate,
   interpolateColor,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -19,7 +21,7 @@ import { colors } from "../theme/colors";
 import {
   getAvatarImage,
   getEventPinImage,
-  getEventPreviewImage,
+  getEventPosterImage,
 } from "../utils/imageAssets";
 import { getSessionEventPinLayout } from "./EventPin";
 
@@ -70,6 +72,14 @@ const IMAGE_BORDER_COLOR = colors.primary;
 
 const ACTION_BACKGROUND_COLOR = colors.text;
 const ACTION_TEXT_COLOR = colors.surface;
+
+const POSTER_IMAGE_FADE_IN_MS = 180;
+const SKELETON_SHIMMER_DURATION_MS = 1150;
+const SKELETON_PULSE_DURATION_MS = 900;
+const PIN_IMAGE_FADE_OUT_START = 0.08;
+const PIN_IMAGE_FADE_OUT_END = 0.32;
+const POSTER_IMAGE_FADE_IN_START = 0.16;
+const POSTER_IMAGE_FADE_IN_END = 0.42;
 
 const POSTER_MONTH_LABELS = [
   "JAN",
@@ -510,6 +520,9 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 ) {
   const pathname = usePathname();
   const internalProgress = useSharedValue(0);
+  const posterImageReady = useSharedValue(0);
+  const skeletonShimmerProgress = useSharedValue(0);
+  const skeletonPulseProgress = useSharedValue(0);
   const progress = progressValue ?? internalProgress;
   const closeReasonRef = useRef(null);
   const isClosingRef = useRef(false);
@@ -551,7 +564,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
   });
   const posterTitleLines = posterTitleLayout.lines;
   const pinImageSource = getEventPinImage(event.thumbnailKey);
-  const previewImageSource = getEventPreviewImage(event.thumbnailKey);
+  const posterImageSource = getEventPosterImage(event.thumbnailKey);
   const titleTypography = {
     fontSize: posterTitleLayout.fontSize,
     lineHeight: posterTitleLayout.lineHeight,
@@ -565,13 +578,57 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
   useEffect(() => {
     isClosingRef.current = false;
+    posterImageReady.value = 0;
+    skeletonShimmerProgress.value = 0;
+    skeletonPulseProgress.value = 0;
+
+    skeletonShimmerProgress.value = withRepeat(
+      withTiming(1, {
+        duration: SKELETON_SHIMMER_DURATION_MS,
+        easing: Easing.inOut(Easing.cubic),
+      }),
+      -1,
+      false
+    );
+
+    skeletonPulseProgress.value = withRepeat(
+      withTiming(1, {
+        duration: SKELETON_PULSE_DURATION_MS,
+        easing: Easing.inOut(Easing.cubic),
+      }),
+      -1,
+      true
+    );
+
     progress.value = 0;
     progress.value = withSpring(1, {
       damping: 18,
       mass: 0.75,
       stiffness: 190,
     });
-  }, [event.id, progress]);
+
+    return () => {
+      cancelAnimation(skeletonShimmerProgress);
+      cancelAnimation(skeletonPulseProgress);
+    };
+  }, [
+    event.id,
+    posterImageReady,
+    progress,
+    skeletonPulseProgress,
+    skeletonShimmerProgress,
+  ]);
+
+  const handlePosterImageLoad = useCallback(() => {
+    posterImageReady.value = withTiming(1, {
+      duration: POSTER_IMAGE_FADE_IN_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [posterImageReady]);
+
+  const handlePosterImageError = useCallback(() => {
+    posterImageReady.value = 0;
+  }, [posterImageReady]);
 
   const finishClose = useCallback(() => {
     isClosingRef.current = false;
@@ -584,6 +641,7 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
 
       isClosingRef.current = true;
       closeReasonRef.current = reason;
+
       progress.value = withTiming(
         0,
         {
@@ -699,13 +757,103 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
     };
   }, [finalImageSize, imageTop, layout.circleOffset, layout.circleSize, posterPadding]);
 
-  const lowResolutionImageStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.8, 0.86], [1, 1, 0], Extrapolation.CLAMP),
-  }));
+  const posterImageStyle = useAnimatedStyle(() => {
+    const value = progress.value;
+    const progressOpacity = interpolate(
+      value,
+      [POSTER_IMAGE_FADE_IN_START, POSTER_IMAGE_FADE_IN_END],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
 
-  const highResolutionImageStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.9, 0.96], [0, 0, 1], Extrapolation.CLAMP),
-  }));
+    return {
+      opacity: posterImageReady.value * progressOpacity,
+    };
+  });
+
+  const posterImageFrameStyle = useAnimatedStyle(() => {
+    const value = progress.value;
+
+    const clipSize = interpolate(
+      value,
+      [0, 1],
+      [layout.circleSize, finalImageSize],
+      Extrapolation.CLAMP
+    );
+
+    const imageScale = clipSize / finalImageSize;
+    const imageOffset = (clipSize - finalImageSize) / 2;
+
+    return {
+      left: imageOffset,
+      top: imageOffset,
+      transform: [{ scale: imageScale }],
+    };
+  }, [finalImageSize, layout.circleSize]);
+
+  const pinImageFrameStyle = useAnimatedStyle(() => {
+    const value = progress.value;
+
+    const clipSize = interpolate(
+      value,
+      [0, 1],
+      [layout.circleSize, finalImageSize],
+      Extrapolation.CLAMP
+    );
+
+    const pinOpacity = interpolate(
+      value,
+      [PIN_IMAGE_FADE_OUT_START, PIN_IMAGE_FADE_OUT_END],
+      [1, 0],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      height: clipSize,
+      opacity: pinOpacity,
+      width: clipSize,
+    };
+  }, [finalImageSize, layout.circleSize]);
+
+  const skeletonImageStyle = useAnimatedStyle(() => {
+    const value = progress.value;
+    const skeletonProgressOpacity = interpolate(
+      value,
+      [0, PIN_IMAGE_FADE_OUT_END, POSTER_IMAGE_FADE_IN_END],
+      [0, 0.35, 1],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      opacity: (1 - posterImageReady.value) * skeletonProgressOpacity,
+    };
+  });
+
+  const skeletonPulseStyle = useAnimatedStyle(() => {
+    const pulseOpacity = interpolate(
+      skeletonPulseProgress.value,
+      [0, 1],
+      [0.68, 1],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      opacity: (1 - posterImageReady.value) * pulseOpacity,
+    };
+  });
+
+  const skeletonShimmerStyle = useAnimatedStyle(() => {
+    const translateX = interpolate(
+      skeletonShimmerProgress.value,
+      [0, 1],
+      [-finalImageSize * 0.9, finalImageSize * 0.9],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      transform: [{ translateX }, { rotate: "-18deg" }],
+    };
+  }, [finalImageSize]);
 
   const posterContentStyle = useAnimatedStyle(() => {
     const value = progress.value;
@@ -776,33 +924,58 @@ const MorphingEventPreview = forwardRef(function MorphingEventPreview(
       />
 
       <Animated.View style={[styles.thumbnailClip, thumbnailClipStyle]}>
-        <Animated.Image
-          accessibilityLabel={`${title} thumbnail transition`}
-          resizeMode="cover"
-          source={pinImageSource}
-          style={[styles.thumbnail, lowResolutionImageStyle]}
-        />
-      </Animated.View>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.thumbnailLayer,
+            styles.thumbnailSkeleton,
+            skeletonImageStyle,
+            skeletonPulseStyle,
+          ]}
+        >
+          <View style={styles.thumbnailSkeletonOrb} />
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.thumbnailSkeletonShimmer, skeletonShimmerStyle]}
+          />
+        </Animated.View>
 
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.finalPreviewImageClip,
-          {
-            height: finalImageSize,
-            left: posterPadding,
-            top: imageTop,
-            width: finalImageSize,
-          },
-          highResolutionImageStyle,
-        ]}
-      >
-        <Image
-          accessibilityLabel={`${title} preview image`}
-          resizeMode="cover"
-          source={previewImageSource}
-          style={styles.thumbnail}
-        />
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.pinImageLayer, pinImageFrameStyle]}
+        >
+          <Image
+            accessibilityLabel={`${title} pin thumbnail`}
+            fadeDuration={0}
+            resizeMode="cover"
+            source={pinImageSource}
+            style={styles.thumbnail}
+          />
+        </Animated.View>
+
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.posterImageLayer,
+            {
+              height: finalImageSize,
+              width: finalImageSize,
+            },
+            posterImageFrameStyle,
+            posterImageStyle,
+          ]}
+        >
+          <Image
+            accessibilityLabel={`${title} poster image`}
+            fadeDuration={0}
+            key={`${event.id}-${event.thumbnailKey}-poster-image`}
+            onError={handlePosterImageError}
+            onLoad={handlePosterImageLoad}
+            resizeMode="cover"
+            source={posterImageSource}
+            style={styles.thumbnail}
+          />
+        </Animated.View>
       </Animated.View>
 
       <Animated.View
@@ -933,11 +1106,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     zIndex: 3,
   },
-  finalPreviewImageClip: {
-    overflow: "hidden",
-    position: "absolute",
-    zIndex: 4,
-  },
   imageBorder: {
     position: "absolute",
     zIndex: 5,
@@ -945,6 +1113,39 @@ const styles = StyleSheet.create({
   thumbnail: {
     height: "100%",
     width: "100%",
+  },
+  thumbnailLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  pinImageLayer: {
+    left: 0,
+    position: "absolute",
+    top: 0,
+    zIndex: 2,
+  },
+  posterImageLayer: {
+    left: 0,
+    position: "absolute",
+    top: 0,
+    zIndex: 3,
+  },
+  thumbnailSkeleton: {
+    alignItems: "center",
+    backgroundColor: colors.primary,
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  thumbnailSkeletonOrb: {
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: 999,
+    height: "54%",
+    width: "54%",
+  },
+  thumbnailSkeletonShimmer: {
+    backgroundColor: "rgba(255, 255, 255, 0.24)",
+    height: "180%",
+    position: "absolute",
+    width: "34%",
   },
   pressed: {
     opacity: 0.72,

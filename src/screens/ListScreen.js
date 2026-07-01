@@ -7,7 +7,7 @@ import DiscoverModePill from "../components/DiscoverModePill";
 import EventCard from "../components/EventCard";
 import { useDiscoveryMode } from "../context/DiscoveryModeContext";
 import useInteractionLogger from "../hooks/useInteractionLogger";
-import { getEvents } from "../services/eventService";
+import { getUpcomingEvents } from "../services/eventService";
 import { LOG_ACTIONS } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 
@@ -60,7 +60,7 @@ export default function ListScreen() {
     useCallback(() => {
       let isActive = true;
 
-      getEvents().then((nextEvents) => {
+      getUpcomingEvents().then((nextEvents) => {
         if (isActive) {
           setEvents(filterDiscoveryEvents(nextEvents));
         }

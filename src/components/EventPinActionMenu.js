@@ -22,6 +22,10 @@ const FAN_ANGLE_OFFSET = 38;
 const HOVERED_ACTION_SCALE = 1.22;
 const HOVERED_ACTION_EXTRA_DISTANCE = 18;
 const HOVER_ANIMATION_MS = 110;
+const ACTION_LABEL_SIDE_OFFSET = 32;
+const ACTION_LABEL_VERTICAL_OFFSET = 34;
+const ACTION_LABEL_BOTTOM_MIN_OFFSET = 96;
+const ACTION_LABEL_VERTICAL_SWITCH_RATIO = 0.58;
 const CANDIDATE_BASE_ANGLES = [270, 225, 315, 180, 0, 135, 45, 90];
 const UPWARD_PREFERRED_ANGLE = 270;
 const UPWARD_BASE_BONUS = 220;
@@ -323,8 +327,31 @@ export default function EventPinActionMenu({
   const hoveredActionConfig = layout.actions.find(
     (action) => action.id === hoveredAction
   );
-  const labelIsOnLeft = origin.x > (screenWidth || 0) / 2;
-  const labelBottom = Math.max(Number(avoidanceInsets?.bottom) || 0, 96) + 34;
+  const safeScreenHeight = Math.max(Number(screenHeight) || 1, 1);
+  const safeScreenWidth = Math.max(Number(screenWidth) || 1, 1);
+  const safeAvoidanceInsets = normalizeAvoidanceInsets(avoidanceInsets);
+
+  const labelIsOnLeft = origin.x > safeScreenWidth / 2;
+
+  const usableTop = safeAvoidanceInsets.top;
+  const usableBottom = safeScreenHeight - safeAvoidanceInsets.bottom;
+  const usableHeight = Math.max(usableBottom - usableTop, 1);
+  const verticalSwitchY =
+    usableTop + usableHeight * ACTION_LABEL_VERTICAL_SWITCH_RATIO;
+
+  const labelShouldUseTop = origin.y >= verticalSwitchY;
+
+  const labelVerticalStyle = labelShouldUseTop
+    ? {
+        top: safeAvoidanceInsets.top + ACTION_LABEL_VERTICAL_OFFSET,
+      }
+    : {
+        bottom:
+          Math.max(
+            safeAvoidanceInsets.bottom,
+            ACTION_LABEL_BOTTOM_MIN_OFFSET
+          ) + ACTION_LABEL_VERTICAL_OFFSET,
+      };
 
   return (
     <View pointerEvents="none" style={styles.container}>
@@ -359,10 +386,10 @@ export default function EventPinActionMenu({
           style={[
             styles.actionLabelContainer,
             {
-              bottom: labelBottom,
-              left: labelIsOnLeft ? 32 : undefined,
+              ...labelVerticalStyle,
+              left: labelIsOnLeft ? ACTION_LABEL_SIDE_OFFSET : undefined,
               opacity: progress,
-              right: labelIsOnLeft ? undefined : 32,
+              right: labelIsOnLeft ? undefined : ACTION_LABEL_SIDE_OFFSET,
             },
           ]}
         >
@@ -475,12 +502,6 @@ const styles = StyleSheet.create({
     fontSize: 42,
     fontWeight: "800",
     letterSpacing: 0,
-    textShadowColor: "rgba(0, 0, 0, 0.22)",
-    textShadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    textShadowRadius: 8,
   },
   actionPosition: {
     elevation: 7,

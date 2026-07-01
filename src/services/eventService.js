@@ -36,6 +36,41 @@ function createRecordMap(records = []) {
   return new Map(records.map((record) => [record.id, record]));
 }
 
+const UPCOMING_EVENT_AVAILABILITIES = new Set([
+  EVENT_AVAILABILITY.available,
+  EVENT_AVAILABILITY.soldOut,
+]);
+
+function getSortableEventTime(event) {
+  const startsAtTime = new Date(event?.startsAt).getTime();
+
+  return Number.isNaN(startsAtTime) ? Number.POSITIVE_INFINITY : startsAtTime;
+}
+
+function compareEventsByStartTime(firstEvent, secondEvent) {
+  const timeDelta = getSortableEventTime(firstEvent) - getSortableEventTime(secondEvent);
+
+  if (timeDelta !== 0) return timeDelta;
+
+  return String(firstEvent?.id ?? "").localeCompare(String(secondEvent?.id ?? ""));
+}
+
+function isUpcomingEventRecord(event, participations = [], now = new Date()) {
+  if (!event || event.status !== EVENT_STATUS.published) {
+    return false;
+  }
+
+  const availability = getEventAvailability(event, participations, now);
+
+  return UPCOMING_EVENT_AVAILABILITIES.has(availability);
+}
+
+function filterUpcomingEventRecords(events = [], participations = [], now = new Date()) {
+  return events
+    .filter((event) => isUpcomingEventRecord(event, participations, now))
+    .sort(compareEventsByStartTime);
+}
+
 async function getEventCompositionData() {
   const currentUser = await getCurrentUserRecord();
   const [
@@ -80,7 +115,7 @@ async function getEventCompositionData() {
   };
 }
 
-function createEventViewModelFromRecord(event, data) {
+function createEventViewModelFromRecord(event, data, now = new Date()) {
   return createEventViewModel({
     currentUser: data.currentUser,
     event,
@@ -89,6 +124,7 @@ function createEventViewModelFromRecord(event, data) {
     friendships: data.friendships,
     images: data.images,
     location: data.locationsById.get(event.locationId),
+    now,
     organizer: data.organizersById.get(event.organizerId),
     participations: data.participations,
     savedEvents: data.savedEvents,
@@ -98,8 +134,23 @@ function createEventViewModelFromRecord(event, data) {
 
 export async function getEvents() {
   const data = await getEventCompositionData();
+  const now = new Date();
 
-  return data.events.map((event) => createEventViewModelFromRecord(event, data));
+  return data.events.map((event) => createEventViewModelFromRecord(event, data, now));
+}
+
+export async function getUpcomingEvents() {
+  const data = await getEventCompositionData();
+  const now = new Date();
+  const upcomingEvents = filterUpcomingEventRecords(
+    data.events,
+    data.participations,
+    now
+  );
+
+  return upcomingEvents.map((event) =>
+    createEventViewModelFromRecord(event, data, now)
+  );
 }
 
 export async function getEventById(id) {
@@ -110,7 +161,7 @@ export async function getEventById(id) {
 }
 
 export async function getEventsByCategory(category) {
-  const events = await getEvents();
+  const events = await getUpcomingEvents();
 
   return filterEventsByCategory(events, category);
 }
@@ -192,7 +243,7 @@ export async function getDiscoverEvents({
   limit = 4,
   longitude = DEFAULT_DISCOVER_COORDINATE.longitude,
 } = {}) {
-  const events = await getEvents();
+  const events = await getUpcomingEvents();
   const origin = { latitude, longitude };
 
   return rankEventsByDiscoveryDistance(events, origin).slice(0, limit);

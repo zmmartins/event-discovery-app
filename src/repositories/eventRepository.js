@@ -19,5 +19,6 @@ export {
   listUserSavedEventRecords,
   patchEvent,
   patchEventParticipationRecord,
-  patchEventRecord,
+  patchEventRecord
 } from "../data/local/localEventRepository";
+

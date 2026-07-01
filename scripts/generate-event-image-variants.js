@@ -4,7 +4,7 @@ const sharp = require("sharp");
 
 const projectRoot = path.resolve(__dirname, "..");
 const eventsDirectory = path.join(projectRoot, "src", "assets", "events");
-const generatedDirectories = new Set(["pins", "previews", "details"]);
+const generatedDirectories = new Set(["pins", "previews", "details", "posters"]);
 const sourceExtensions = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
 const variants = [
@@ -14,6 +14,16 @@ const variants = [
     suffix: "pin",
     transform: (image) =>
       image.resize(160, 160, {
+        fit: "cover",
+        position: "attention",
+      }),
+  },
+  {
+    directory: "posters",
+    quality: 92,
+    suffix: "poster",
+    transform: (image) =>
+      image.resize(1200, 1200, {
         fit: "cover",
         position: "attention",
       }),
