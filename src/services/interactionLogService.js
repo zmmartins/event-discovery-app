@@ -6,7 +6,7 @@ import { Platform } from "react-native";
 
 const LOGS_KEY = "interaction_logs";
 const CONTEXT_KEY = "interaction_context";
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const EXPORT_DIRECTORY = `${FileSystem.documentDirectory ?? ""}interaction-logs/`;
 
 export const LOG_ACTIONS = {
@@ -55,6 +55,8 @@ export const LOG_ACTIONS = {
   taskFinished: "task_finished",
   taskStarted: "task_started",
   topNavSelected: "top_nav_selected",
+  usabilitySessionEnded: "usability_session_ended",
+  usabilitySessionStarted: "usability_session_started",
   userLocationDetected: "user_location_detected",
   userLocationRecentered: "user_location_recentered",
   userLocationUnavailable: "user_location_unavailable",
@@ -106,6 +108,8 @@ const ACTION_CATEGORIES = {
   taskFinished: "task",
   taskStarted: "task",
   topNavSelected: "navigation",
+  usabilitySessionEnded: "task",
+  usabilitySessionStarted: "task",
   userLocationDetected: "location",
   userLocationRecentered: "location",
   userLocationUnavailable: "location",
@@ -117,6 +121,26 @@ const ACTION_CATEGORY_BY_VALUE = Object.fromEntries(
     ACTION_CATEGORIES[key] ?? "interaction",
   ]),
 );
+
+const CLICK_ACTIONS = new Set([
+  LOG_ACTIONS.bottomNavRouteChanged,
+  LOG_ACTIONS.eventBookmarkToggled,
+  LOG_ACTIONS.eventCardPressed,
+  LOG_ACTIONS.eventDetailBackPressed,
+  LOG_ACTIONS.eventPinSelected,
+  LOG_ACTIONS.eventPinActionMenuDismissed,
+  LOG_ACTIONS.eventPinActionMenuOpened,
+  LOG_ACTIONS.eventPinActionMenuSelected,
+  LOG_ACTIONS.eventPreviewDismissed,
+  LOG_ACTIONS.eventShared,
+  LOG_ACTIONS.filterOpened,
+  LOG_ACTIONS.participationClicked,
+  LOG_ACTIONS.profileExperienceOpened,
+  LOG_ACTIONS.profileExperiencePinSelected,
+  LOG_ACTIONS.profileViewChanged,
+  LOG_ACTIONS.topNavSelected,
+  LOG_ACTIONS.userLocationRecentered,
+]);
 
 const sessionStartedAtMs = Date.now();
 const sessionStartedAt = new Date(sessionStartedAtMs).toISOString();
@@ -147,15 +171,25 @@ const CSV_COLUMNS = [
   "elapsedMs",
   "action",
   "actionCategory",
+  "interactionType",
   "screen",
   "route",
   "fromRoute",
   "targetRoute",
+  "tab",
+  "fromTab",
+  "targetTab",
   "eventId",
   "experienceId",
   "participantId",
   "taskId",
+  "taskElapsedMs",
+  "taskDurationMs",
   "source",
+  "targetType",
+  "targetId",
+  "targetLabel",
+  "uiElement",
   "reason",
   "result",
   "latitude",
@@ -194,6 +228,55 @@ function asNullableNumber(value) {
   const numberValue = Number(value);
 
   return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function getInteractionType(action, metadata = {}) {
+  const explicitType = pickCommonField(metadata, "interactionType");
+
+  if (explicitType) return explicitType;
+  if (CLICK_ACTIONS.has(action)) return "click";
+
+  const actionCategory =
+    pickCommonField(metadata, "actionCategory") ??
+    ACTION_CATEGORY_BY_VALUE[action] ??
+    "interaction";
+
+  if (actionCategory === "screen_view") return "screen_view";
+  if (actionCategory === "navigation") return "navigation";
+  if (actionCategory === "task") return "task";
+  if (actionCategory === "sensor") return "sensor";
+  if (actionCategory === "location") return "location";
+  if (actionCategory === "debug_export") return "debug_export";
+
+  return "interaction";
+}
+
+function getTaskElapsedMs(context) {
+  const startedAtMs = Date.parse(context?.activeTaskStartedAt);
+
+  if (!Number.isFinite(startedAtMs)) return null;
+
+  return Math.max(Date.now() - startedAtMs, 0);
+}
+
+function getFallbackTargetId(metadata = {}) {
+  return (
+    pickCommonField(metadata, "targetId") ??
+    pickCommonField(metadata, "targetRoute") ??
+    pickCommonField(metadata, "eventId") ??
+    pickCommonField(metadata, "experienceId") ??
+    null
+  );
+}
+
+function getFallbackTargetLabel(action, metadata = {}) {
+  return (
+    pickCommonField(metadata, "targetLabel") ??
+    pickCommonField(metadata, "accessibilityLabel") ??
+    pickCommonField(metadata, "label") ??
+    pickCommonField(metadata, "source") ??
+    action
+  );
 }
 
 function sanitizeMetadata(value, depth = 0) {
@@ -241,6 +324,10 @@ function normalizeLog(log, index = 0) {
   );
   const timestamp = log?.timestamp ?? new Date(sessionStartedAtMs).toISOString();
   const action = log?.action ?? "unknown";
+  const interactionType =
+    log?.interactionType ??
+    pickCommonField(metadata, "interactionType") ??
+    getInteractionType(action, metadata);
 
   return {
     id: log?.id ?? `legacy-${index}`,
@@ -257,6 +344,7 @@ function normalizeLog(log, index = 0) {
       pickCommonField(metadata, "actionCategory") ??
       ACTION_CATEGORY_BY_VALUE[action] ??
       "interaction",
+    interactionType,
     screen: log?.screen ?? pickCommonField(metadata, "screen") ?? null,
     route: log?.route ?? pickCommonField(metadata, "route") ?? null,
     fromRoute:
@@ -269,13 +357,41 @@ function normalizeLog(log, index = 0) {
       pickCommonField(metadata, "targetRoute") ??
       pickCommonField(metadata, "nextRoute") ??
       null,
+    tab: log?.tab ?? pickCommonField(metadata, "tab") ?? null,
+    fromTab:
+      log?.fromTab ??
+      pickCommonField(metadata, "fromTab") ??
+      pickCommonField(metadata, "previousTab") ??
+      null,
+    targetTab:
+      log?.targetTab ??
+      pickCommonField(metadata, "targetTab") ??
+      pickCommonField(metadata, "nextTab") ??
+      null,
     eventId: log?.eventId ?? pickCommonField(metadata, "eventId") ?? null,
     experienceId:
       log?.experienceId ?? pickCommonField(metadata, "experienceId") ?? null,
     participantId:
       log?.participantId ?? pickCommonField(metadata, "participantId") ?? null,
     taskId: log?.taskId ?? pickCommonField(metadata, "taskId") ?? null,
+    taskElapsedMs: asNullableNumber(
+      log?.taskElapsedMs ?? pickCommonField(metadata, "taskElapsedMs"),
+    ),
+    taskDurationMs: asNullableNumber(
+      log?.taskDurationMs ?? pickCommonField(metadata, "taskDurationMs"),
+    ),
     source: log?.source ?? pickCommonField(metadata, "source") ?? null,
+    targetType:
+      log?.targetType ?? pickCommonField(metadata, "targetType") ?? null,
+    targetId:
+      log?.targetId ??
+      pickCommonField(metadata, "targetId") ??
+      getFallbackTargetId(metadata),
+    targetLabel:
+      log?.targetLabel ??
+      pickCommonField(metadata, "targetLabel") ??
+      getFallbackTargetLabel(action, metadata),
+    uiElement: log?.uiElement ?? pickCommonField(metadata, "uiElement") ?? null,
     reason: log?.reason ?? pickCommonField(metadata, "reason") ?? null,
     result: log?.result ?? pickCommonField(metadata, "result") ?? null,
     latitude: asNullableNumber(
@@ -308,11 +424,14 @@ async function readStoredContext() {
     await AsyncStorage.getItem(CONTEXT_KEY),
     {},
   );
+  const safeContext =
+    storedContext && typeof storedContext === "object" ? storedContext : {};
 
   return {
-    activeTaskStartedAt: storedContext.activeTaskStartedAt ?? null,
-    participantId: storedContext.participantId ?? null,
-    taskId: storedContext.taskId ?? null,
+    ...safeContext,
+    activeTaskStartedAt: safeContext.activeTaskStartedAt ?? null,
+    participantId: safeContext.participantId ?? null,
+    taskId: safeContext.taskId ?? null,
   };
 }
 
@@ -342,6 +461,18 @@ function buildLog(action, metadata, context) {
     null;
   const taskId =
     pickCommonField(sanitizedMetadata, "taskId") ?? context.taskId ?? null;
+  const activeTaskStartedAt =
+    pickCommonField(sanitizedMetadata, "activeTaskStartedAt") ??
+    context.activeTaskStartedAt ??
+    null;
+  const interactionType = getInteractionType(action, sanitizedMetadata);
+  const taskElapsedMs =
+    asNullableNumber(pickCommonField(sanitizedMetadata, "taskElapsedMs")) ??
+    getTaskElapsedMs({ ...context, activeTaskStartedAt });
+  const targetId = asNullableString(getFallbackTargetId(sanitizedMetadata));
+  const targetLabel = asNullableString(
+    getFallbackTargetLabel(action, sanitizedMetadata),
+  );
 
   return {
     id: createId(),
@@ -356,6 +487,7 @@ function buildLog(action, metadata, context) {
       pickCommonField(sanitizedMetadata, "actionCategory") ??
       ACTION_CATEGORY_BY_VALUE[action] ??
       "interaction",
+    interactionType,
     screen: pickCommonField(sanitizedMetadata, "screen") ?? null,
     route: pickCommonField(sanitizedMetadata, "route") ?? null,
     fromRoute:
@@ -363,13 +495,27 @@ function buildLog(action, metadata, context) {
       pickCommonField(sanitizedMetadata, "previousRoute") ??
       null,
     targetRoute: pickCommonField(sanitizedMetadata, "targetRoute") ?? null,
+    tab: pickCommonField(sanitizedMetadata, "tab") ?? null,
+    fromTab:
+      pickCommonField(sanitizedMetadata, "fromTab") ??
+      pickCommonField(sanitizedMetadata, "previousTab") ??
+      null,
+    targetTab: pickCommonField(sanitizedMetadata, "targetTab") ?? null,
     eventId: asNullableString(pickCommonField(sanitizedMetadata, "eventId")),
     experienceId: asNullableString(
       pickCommonField(sanitizedMetadata, "experienceId"),
     ),
     participantId,
     taskId,
+    taskElapsedMs,
+    taskDurationMs: asNullableNumber(
+      pickCommonField(sanitizedMetadata, "taskDurationMs"),
+    ),
     source: pickCommonField(sanitizedMetadata, "source") ?? null,
+    targetType: pickCommonField(sanitizedMetadata, "targetType") ?? null,
+    targetId,
+    targetLabel,
+    uiElement: pickCommonField(sanitizedMetadata, "uiElement") ?? null,
     reason: pickCommonField(sanitizedMetadata, "reason") ?? null,
     result: pickCommonField(sanitizedMetadata, "result") ?? null,
     latitude: asNullableNumber(pickCommonField(sanitizedMetadata, "latitude")),
@@ -379,8 +525,13 @@ function buildLog(action, metadata, context) {
     appVersion: appMetadata.appVersion,
     metadata: {
       ...sanitizedMetadata,
+      interactionType,
       participantId,
       taskId,
+      activeTaskStartedAt,
+      targetId,
+      targetLabel,
+      taskElapsedMs,
     },
   };
 }
@@ -388,6 +539,12 @@ function buildLog(action, metadata, context) {
 async function appendLog(action, metadata = {}) {
   const context = await ensureContextLoaded();
   const currentLogs = await readStoredLogs();
+
+  sequence = Math.max(
+    sequence,
+    ...currentLogs.map((log) => Number(log.sequence) || 0),
+  );
+
   const newLog = buildLog(action, metadata, context);
 
   await writeStoredLogs([...currentLogs, newLog]);
@@ -414,8 +571,109 @@ function createCountMap(logs, key) {
   }, {});
 }
 
+function createCountMapFrom(logs, getKey) {
+  return logs.reduce((counts, log) => {
+    const value = getKey(log);
+    if (!value) return counts;
+
+    counts[value] = (counts[value] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function isClickLog(log) {
+  return log.interactionType === "click" || CLICK_ACTIONS.has(log.action);
+}
+
 function getLastLogByAction(logs, action) {
   return [...logs].reverse().find((log) => log.action === action) ?? null;
+}
+
+function getVisibleRouteTimeline(logs) {
+  return logs
+    .filter(
+      (log) =>
+        log.action === LOG_ACTIONS.routeChanged ||
+        log.action === LOG_ACTIONS.bottomNavRouteChanged ||
+        log.interactionType === "screen_view",
+    )
+    .map((log) => ({
+      action: log.action,
+      fromRoute: log.fromRoute,
+      fromTab: log.fromTab,
+      route: log.route,
+      screen: log.screen,
+      sequence: log.sequence,
+      tab: log.tab ?? log.targetTab,
+      targetRoute: log.targetRoute,
+      targetTab: log.targetTab,
+      timestamp: log.timestamp,
+    }));
+}
+
+function getTaskMetrics(logs, taskId, startedAt) {
+  if (!taskId) {
+    return {
+      clickCount: 0,
+      durationMs: 0,
+      interactionCount: 0,
+      routeCount: 0,
+      screenCount: 0,
+    };
+  }
+
+  const startedAtMs = Date.parse(startedAt);
+  const taskLogs = logs.filter((log) => {
+    if (log.taskId !== taskId) return false;
+    if (!Number.isFinite(startedAtMs)) return true;
+
+    return Date.parse(log.timestamp) >= startedAtMs;
+  });
+  const lastLog = taskLogs[taskLogs.length - 1];
+  const durationMs =
+    Number.isFinite(startedAtMs) && lastLog
+      ? Math.max(Date.parse(lastLog.timestamp) - startedAtMs, 0)
+      : 0;
+
+  return {
+    clickCount: taskLogs.filter(isClickLog).length,
+    countsByAction: createCountMap(taskLogs, "action"),
+    countsByTarget: createCountMapFrom(
+      taskLogs.filter(isClickLog),
+      (log) => log.targetLabel ?? log.source ?? log.action,
+    ),
+    durationMs,
+    firstTimestamp: taskLogs[0]?.timestamp ?? startedAt ?? null,
+    interactionCount: taskLogs.length,
+    lastTimestamp: lastLog?.timestamp ?? null,
+    routeCount: new Set(taskLogs.map((log) => log.route).filter(Boolean)).size,
+    screenCount: new Set(taskLogs.map((log) => log.screen).filter(Boolean)).size,
+  };
+}
+
+function buildTaskSummaries(logs) {
+  const startedTasks = logs.filter((log) => log.action === LOG_ACTIONS.taskStarted);
+  const finishedTasks = logs.filter(
+    (log) => log.action === LOG_ACTIONS.taskFinished,
+  );
+
+  return startedTasks.map((startedLog) => {
+    const finishedLog =
+      finishedTasks.find(
+        (log) =>
+          log.taskId === startedLog.taskId &&
+          Date.parse(log.timestamp) >= Date.parse(startedLog.timestamp),
+      ) ?? null;
+    const metrics = getTaskMetrics(logs, startedLog.taskId, startedLog.timestamp);
+
+    return {
+      ...metrics,
+      finishedAt: finishedLog?.timestamp ?? null,
+      result: finishedLog?.result ?? null,
+      startedAt: startedLog.timestamp,
+      taskId: startedLog.taskId,
+    };
+  });
 }
 
 function getFunnelCounts(logs) {
@@ -453,9 +711,11 @@ function getFunnelCounts(logs) {
 function buildSummary(logs) {
   const firstLog = logs[0];
   const lastLog = logs[logs.length - 1];
+  const clickLogs = logs.filter(isClickLog);
 
   return {
     totalLogs: logs.length,
+    clickCount: clickLogs.length,
     firstTimestamp: firstLog?.timestamp ?? null,
     lastTimestamp: lastLog?.timestamp ?? null,
     durationMs:
@@ -467,9 +727,20 @@ function buildSummary(logs) {
     sessionIds: [...new Set(logs.map((log) => log.sessionId).filter(Boolean))],
     countsByAction: createCountMap(logs, "action"),
     countsByActionCategory: createCountMap(logs, "actionCategory"),
+    countsByInteractionType: createCountMap(logs, "interactionType"),
     countsByScreen: createCountMap(logs, "screen"),
     countsByRoute: createCountMap(logs, "route"),
+    countsByTab: createCountMapFrom(
+      logs,
+      (log) => log.tab ?? log.targetTab ?? null,
+    ),
     countsByEventId: createCountMap(logs, "eventId"),
+    countsByClickTarget: createCountMapFrom(
+      clickLogs,
+      (log) => log.targetLabel ?? log.source ?? log.action,
+    ),
+    routeTimeline: getVisibleRouteTimeline(logs),
+    taskSummaries: buildTaskSummaries(logs),
     funnelCounts: getFunnelCounts(logs),
   };
 }
@@ -574,13 +845,17 @@ export async function getInteractionContext() {
   return ensureContextLoaded();
 }
 
-export async function startInteractionTask(taskId) {
+export async function startInteractionTask(taskId, metadata = {}) {
+  const startedAt = new Date().toISOString();
   const nextContext = await setInteractionContext({
-    activeTaskStartedAt: new Date().toISOString(),
+    activeTaskStartedAt: startedAt,
     taskId,
+    ...sanitizeMetadata(metadata),
   });
 
   await logInteraction(LOG_ACTIONS.taskStarted, {
+    ...sanitizeMetadata(metadata),
+    activeTaskStartedAt: startedAt,
     result: "started",
     screen: "InteractionLogService",
     source: "interaction_log_service",
@@ -590,21 +865,106 @@ export async function startInteractionTask(taskId) {
   return nextContext;
 }
 
-export async function finishInteractionTask(result = "finished") {
+export async function finishInteractionTask(result = "finished", metadata = {}) {
   const context = await getInteractionContext();
   const taskId = context.taskId;
+  const finishedAt = new Date().toISOString();
+  const taskMetrics = getTaskMetrics(
+    await getInteractionLogs(),
+    taskId,
+    context.activeTaskStartedAt,
+  );
 
   await logInteraction(LOG_ACTIONS.taskFinished, {
+    ...sanitizeMetadata(metadata),
     result,
     screen: "InteractionLogService",
     source: "interaction_log_service",
     taskId,
+    taskClickCount: taskMetrics.clickCount,
+    taskDurationMs:
+      Date.parse(context.activeTaskStartedAt) > 0
+        ? Math.max(Date.parse(finishedAt) - Date.parse(context.activeTaskStartedAt), 0)
+        : taskMetrics.durationMs,
+    taskFinishedAt: finishedAt,
+    taskInteractionCount: taskMetrics.interactionCount,
+    taskRouteCount: taskMetrics.routeCount,
+    taskScreenCount: taskMetrics.screenCount,
+    taskStartedAt: context.activeTaskStartedAt,
+    taskTargetCounts: taskMetrics.countsByTarget,
   }).catch(() => null);
 
   interactionContext = {
     ...context,
     activeTaskStartedAt: null,
     taskId: null,
+  };
+
+  await AsyncStorage.setItem(CONTEXT_KEY, JSON.stringify(interactionContext));
+
+  return getInteractionContext();
+}
+
+export async function beginUsabilityTestSession({
+  participantId,
+  resetLogs = false,
+  sessionLabel,
+  testPlanId,
+} = {}) {
+  if (resetLogs) {
+    await clearInteractionLogs({ logClear: false });
+  }
+
+  const startedAt = new Date().toISOString();
+  const nextContext = await setInteractionContext({
+    activeTaskStartedAt: null,
+    participantId,
+    sessionLabel,
+    taskId: null,
+    testPlanId,
+    usabilitySessionStartedAt: startedAt,
+  });
+
+  await logInteraction(LOG_ACTIONS.usabilitySessionStarted, {
+    participantId,
+    result: "started",
+    screen: "InteractionLogService",
+    sessionLabel,
+    source: "interaction_log_service",
+    testPlanId,
+    usabilitySessionStartedAt: startedAt,
+  }).catch(() => null);
+
+  return nextContext;
+}
+
+export async function endUsabilityTestSession(result = "completed", metadata = {}) {
+  const context = await getInteractionContext();
+  const finishedAt = new Date().toISOString();
+  const startedAt = context.usabilitySessionStartedAt;
+  const startedAtMs = Date.parse(startedAt);
+  const sessionDurationMs = Number.isFinite(startedAtMs)
+    ? Math.max(Date.parse(finishedAt) - startedAtMs, 0)
+    : null;
+
+  await logInteraction(LOG_ACTIONS.usabilitySessionEnded, {
+    ...sanitizeMetadata(metadata),
+    participantId: context.participantId,
+    result,
+    screen: "InteractionLogService",
+    sessionDurationMs,
+    sessionLabel: context.sessionLabel,
+    source: "interaction_log_service",
+    testPlanId: context.testPlanId,
+    usabilitySessionFinishedAt: finishedAt,
+    usabilitySessionStartedAt: startedAt,
+  }).catch(() => null);
+
+  interactionContext = {
+    ...context,
+    activeTaskStartedAt: null,
+    taskId: null,
+    usabilitySessionFinishedAt: finishedAt,
   };
 
   await AsyncStorage.setItem(CONTEXT_KEY, JSON.stringify(interactionContext));

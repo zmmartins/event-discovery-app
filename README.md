@@ -613,7 +613,8 @@ Interaction logs live in `src/services/interactionLogService.js`.
 
 The logger records session metadata, route/screen/action data,
 event/task/source metadata, location metadata when available, action
-categories, elapsed time, and sequence number.
+categories, interaction type, click target labels, tab transitions,
+task-relative elapsed time, and sequence number.
 
 Storage and export support:
 
@@ -629,12 +630,14 @@ Useful exported functions:
 
 ```js
 logInteraction(action, metadata);
+beginUsabilityTestSession({ participantId, sessionLabel, testPlanId, resetLogs });
+endUsabilityTestSession(result, metadata);
+startInteractionTask(taskId, metadata);
+finishInteractionTask(result, metadata);
 getInteractionLogs();
 clearInteractionLogs();
 setInteractionContext(context);
 getInteractionContext();
-startInteractionTask(taskId);
-finishInteractionTask(result);
 getInteractionSummary();
 getInteractionAnalytics();
 exportInteractionLogsAsJson();
@@ -644,7 +647,65 @@ writeInteractionExportFile(format);
 shareInteractionExport(format);
 ```
 
-There is currently no dedicated logs/debug screen in the route tree.
+For usability tests, use the in-app facilitator panel at
+`/map/notifications`. In Expo Go, start the app normally, scan the QR code, and
+tap the top-right notifications button in the Explore header to open
+**Interaction Logs**. From there you can start a clean participant session,
+start/finish each task, refresh live metrics, clear logs, and share exports from
+the phone.
+
+Recommended Expo Go flow:
+
+1. Start the dev server with `npx expo start`.
+2. Scan the QR code with Expo Go.
+3. Open the top-right notifications button on the Explore screen.
+4. Set participant/session/test-plan values.
+5. Tap **Start clean session**.
+6. Select or type a task id and tap **Start task**.
+7. Hand the phone to the participant.
+8. Return to the log panel after the task and tap **Finish completed** or
+   **Finish failed**.
+9. Repeat for the remaining tasks.
+10. Tap **Share JSON bundle** for the main report artifact, or **Share CSV** for
+    spreadsheet analysis.
+
+The same flow can also be driven from code:
+
+```js
+await beginUsabilityTestSession({
+  participantId: "P01",
+  sessionLabel: "pilot-1",
+  testPlanId: "ami-lab3",
+  resetLogs: true,
+});
+
+await startInteractionTask("task-find-and-join-event");
+// participant uses the app
+await finishInteractionTask("completed");
+
+await shareInteractionExport("bundle");
+```
+
+The exported bundle includes:
+
+- raw logs with timestamp, elapsed time, action, action category,
+  `interactionType`, route, source, clicked target fields, tab fields, task id,
+  and task elapsed time;
+- `summary.clickCount`, `summary.countsByClickTarget`,
+  `summary.countsByRoute`, `summary.countsByTab`, and
+  `summary.routeTimeline`;
+- `summary.taskSummaries` with task duration, interaction count, click count,
+  route count, screen count, action counts, and clicked-target counts;
+- session summaries and recent actions for quick inspection.
+
+Root-level route observation logs route changes and bottom-tab changes, while
+individual screens/components log important taps such as event cards, pins,
+save buttons, participation CTAs, profile section/view selectors, profile
+experience cards, top navigation, and map recenter actions.
+
+There is currently no dedicated logs/debug screen in the route tree, so exports
+must be triggered from code, a temporary test harness, or a future facilitator
+screen.
 
 ## Design And UX
 
