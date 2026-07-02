@@ -125,6 +125,25 @@ const eventDetailImages = {
   sunset2: require("../assets/events/details/sunset2_detail.jpg"),
 };
 
+const experiencePhotoImages = {
+  cascais_print_salon_experience_1: require("../assets/experiences/cascais-print-salon/cascais_print_salon_1.png"),
+  cascais_print_salon_experience_2: require("../assets/experiences/cascais-print-salon/cascais_print_salon_2.png"),
+  cascais_print_salon_experience_3: require("../assets/experiences/cascais-print-salon/cascais_print_salon_3.png"),
+  cascais_print_salon_experience_4: require("../assets/experiences/cascais-print-salon/cascais_print_salon_4.png"),
+  berlin_illustration_experience_1: require("../assets/experiences/berlin-illustration-night/berlin_illustration_1.png"),
+  berlin_illustration_experience_2: require("../assets/experiences/berlin-illustration-night/berlin_illustration_2.png"),
+  berlin_illustration_experience_3: require("../assets/experiences/berlin-illustration-night/berlin_illustration_3.png"),
+  copenhagen_sourdough_experience_1: require("../assets/experiences/copenhagen-sourdough-morning/copenhagen_sourdough_1.png"),
+  copenhagen_sourdough_experience_2: require("../assets/experiences/copenhagen-sourdough-morning/copenhagen_sourdough_2.png"),
+  copenhagen_sourdough_experience_3: require("../assets/experiences/copenhagen-sourdough-morning/copenhagen_sourdough_3.png"),
+  copenhagen_sourdough_experience_4: require("../assets/experiences/copenhagen-sourdough-morning/copenhagen_sourdough_4.png"),
+  copenhagen_sourdough_experience_5: require("../assets/experiences/copenhagen-sourdough-morning/copenhagen_sourdough_5.png"),
+  new_york_tile_room_experience_1: require("../assets/experiences/new-york-tile-room-opening/new_york_tile_room_1.png"),
+  new_york_tile_room_experience_2: require("../assets/experiences/new-york-tile-room-opening/new_york_tile_room_2.png"),
+  new_york_tile_room_experience_3: require("../assets/experiences/new-york-tile-room-opening/new_york_tile_room_3.png"),
+  new_york_tile_room_experience_4: require("../assets/experiences/new-york-tile-room-opening/new_york_tile_room_4.png"),
+};
+
 export const eventImages = eventPreviewImages;
 
 function normalizeEventImageKey(key) {
@@ -141,6 +160,8 @@ export function getEventPinImage(key) {
   const normalizedKey = normalizeEventImageKey(key);
 
   return (
+    experiencePhotoImages[normalizedKey] ??
+    experiencePhotoImages[key] ??
     eventPinImages[normalizedKey] ?? eventPinImages[key] ?? eventPinImages.art_gallery1
   );
 }
@@ -154,6 +175,8 @@ export function getEventPosterImage(key) {
     eventDetailImages[normalizedKey] ??
     eventDetailImages[key] ??
     eventPosterImages[normalizedKey] ??
+    experiencePhotoImages[normalizedKey] ??
+    experiencePhotoImages[key] ??
     eventPreviewImages[normalizedKey] ??
     eventPreviewImages[key] ??
     eventPinImages[normalizedKey] ??
@@ -166,6 +189,8 @@ export function getEventPreviewImage(key) {
   const normalizedKey = normalizeEventImageKey(key);
 
   return (
+    experiencePhotoImages[normalizedKey] ??
+    experiencePhotoImages[key] ??
     eventPreviewImages[normalizedKey] ??
     eventPreviewImages[key] ??
     eventPreviewImages.art_gallery1

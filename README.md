@@ -23,11 +23,15 @@ a real backend yet.
   surfaces on supported iOS devices and fallback surfaces elsewhere.
 - Explore routes are wrapped in `DiscoveryModeProvider` and `AppShell`, which
   adds the top explore navigation on map, list, and shake-discover surfaces.
-- Data is local and in-memory. Saved and joined state can mutate during a
+- Data is local and in-memory. Saved and participation state can mutate during a
   session, but resets when the JavaScript runtime reloads.
 - Seed data currently includes 16 published events dated from May 22, 2026 to
   August 9, 2026 across international mock venues, 6 event types, 7 mock users,
-  friendships, saved events, participations, and profile experience records.
+  friendships, active participations, an initially empty saved-events
+  collection, and profile experience records.
+- The current user's attended profile records use dedicated memory-photo assets
+  from `src/assets/experiences`; friend history can reuse event image keys for
+  social context.
 - `getUpcomingEvents()` filters seed events by the current runtime date,
   lifecycle status, capacity, and participation state, so the visible Explore
   set changes as the mock event dates pass.
@@ -45,11 +49,11 @@ Implemented app surfaces:
 - List discovery with an upcoming-events masonry feed, card save controls, and
   long-press card actions.
 - Event detail screen with generated detail media, a draggable sheet,
-  interactive mini map, social context, save/join controls, haptics, and
-  logging.
+  interactive mini map, social context, save, join, and cancel-attendance
+  controls, haptics, and logging.
 - Profile screen with Attended, Going, and Saved sections, section-specific
-  list/map selectors, attended memories, attended map pins, and upcoming/saved
-  event feeds.
+  list/map selectors, attended memory-ticket cards, attended map pins, and
+  upcoming/saved event feeds or empty states.
 - Shake to Discover with accelerometer detection, vibration, haptics, a styled
   discovery circle, Discovery Mode activation, and redirect to the filtered
   list.
@@ -72,11 +76,14 @@ Implemented app surfaces:
 - Expo Haptics
 - Expo Blur
 - Expo Glass Effect
+- Expo Linear Gradient
 - Expo FileSystem and Sharing
 - Expo Splash Screen
 - Expo Status Bar
 - Expo System UI
 - Expo Updates
+- React Native Masked View
+- React Native SVG
 - Sharp for local image variant generation
 - Knip for unused-code/dependency audits
 
@@ -295,13 +302,15 @@ Current behavior:
 - a draggable detail sheet with collapsed and expanded states;
 - date, time, category, description, location, friends, and prototype reviews;
 - save/bookmark control with haptic feedback;
-- participation action through `joinEvent(id)`;
+- participation actions through `joinEvent(id)` and
+  `cancelEventParticipation(id)`;
 - live Google-provider mini map styled with `APP_MAP_STYLE`;
 - custom event-location pin, optional current-user location marker, and an
   icon-only recenter button;
 - one-finger drags over the mini map move the detail sheet, while two-finger
   pan and pinch gestures control the mini map;
-- interaction logging for detail opening, back, sheet movement, save, and join.
+- interaction logging for detail opening, back, sheet movement, save, join, and
+  cancel.
 
 Some supporting content is intentionally prototype-grade, including the
 review-card copy.
@@ -318,9 +327,15 @@ Current behavior:
 - Attended, Going, and Saved sections with counts;
 - per-section list/map selector;
 - Attended list cards from explicit profile experience records;
+- attended cards use `ProfileExperienceCard`, a single masked ticket body with
+  SVG-clipped side notches and bottom perforations, an image-to-dark gradient,
+  save/details controls, and haptic/logged interactions;
+- attended memory media supports mosaic grid mode, full-image mode, vertical
+  dash rail selection, and an expanded image modal;
 - Attended map using `ExperiencePin` and random memory photos from each
   experience;
-- Going and Saved list views rendered as two-column `EventCard` feeds;
+- Going and Saved list views render two-column `EventCard` feeds when records
+  exist and empty states otherwise;
 - Going and Saved map views are placeholder states for now.
 
 ### Shake To Discover
@@ -364,6 +379,7 @@ src/assets/events/pins/       Generated 160x160 pin images
 src/assets/events/posters/    Generated 1200x1200 morph-poster fallbacks
 src/assets/events/previews/   Generated max-900px preview/card images
 src/assets/events/details/    Generated max-1600px detail images
+src/assets/experiences/       Dedicated profile memory photo assets
 src/components/               Reusable UI components
 src/context/                  Discovery Mode context
 src/data/                     Mock source records and local data adapters
@@ -413,7 +429,7 @@ Repository-structure helpers:
 - `list_project_structure.py` is a standalone legacy tree printer with
   hardcoded ignores. It does not read `.structignore`.
 
-## Event Image Assets
+## Event And Experience Image Assets
 
 Source event images live directly under `src/assets/events`. Generated variants
 live in:
@@ -425,6 +441,10 @@ live in:
   longest side for cards, lists, and profile memories.
 - `src/assets/events/details`: JPG images resized to fit within 1600px on the
   longest side for event detail media.
+
+Dedicated profile memory photos live under `src/assets/experiences` and are
+referenced by `mockUserEventExperiences`. They are not regenerated by
+`npm run images:events`.
 
 Regenerate variants with:
 
@@ -440,9 +460,12 @@ again.
 
 Image lookup is centralized in `src/utils/imageAssets.js`:
 
-- `getEventPinImage(key)` for map pins and profile experience pins.
-- `getEventPosterImage(key)` for the map pin-to-poster morph thumbnail.
-- `getEventPreviewImage(key)` for cards, list images, and profile memory tiles.
+- `getEventPinImage(key)` for map pins and profile experience pins, with
+  dedicated experience photos preferred when the key is a memory photo ref.
+- `getEventPosterImage(key)` for the map pin-to-poster morph thumbnail,
+  preferring source/detail assets before square poster fallbacks.
+- `getEventPreviewImage(key)` for cards, list images, and profile memory tiles,
+  with dedicated experience photos preferred when available.
 - `getEventDetailImage(key)` for event detail media.
 - `getEventImage(key)` as a backward-compatible alias to preview images.
 - `getAvatarImage(key)` for bundled mock avatars.
@@ -450,8 +473,8 @@ Image lookup is centralized in `src/utils/imageAssets.js`:
 `imageAssets.js` also keeps legacy keys such as `art-gallery`, `film-night`,
 and `rooftop-jazz` so older profile photo refs still resolve.
 
-Do not manually edit generated variants. Update the source image, then rerun
-`npm run images:events`.
+Do not manually edit generated event variants. Update the source event image,
+then rerun `npm run images:events`. Experience PNGs are separate profile assets.
 
 ## Data Layer
 
@@ -468,7 +491,8 @@ Data flow:
   `mockEventTypes`, `mockOrganizers`, `mockLocations`, `mockEvents`,
   `mockEventImages`, `mockEventParticipations`, and `mockUserSavedEvents`.
 - `src/data/mockUsers.js` contains user-domain source records:
-  `mockUsers`, `mockFriendships`, and `mockUserEventExperiences`.
+  `mockUsers`, `mockFriendships`, and `mockUserEventExperiences`, including
+  profile memory photo refs.
 - `src/data/local/*Repository.js` contains local in-memory repository
   implementations and is the only app layer that should import mock records
   directly.
@@ -496,6 +520,7 @@ getUpcomingEvents();
 getEventById(id);
 getEventsByCategory(category);
 joinEvent(id);
+cancelEventParticipation(id);
 toggleSavedEvent(id);
 getDiscoverEvents(options);
 ```
@@ -505,17 +530,20 @@ Availability is computed as `available`, `sold_out`, `canceled`, or
 `already_happened` from lifecycle status, current time, active participation
 count, and `maximumCapacity`.
 
-Saved state is represented by `mockUserSavedEvents`. Join state is represented
-by `mockEventParticipations`; active participation means
+Saved state is represented by `mockUserSavedEvents`, which is currently seeded
+empty and grows or shrinks in memory when the current user toggles saves. Join
+state is represented by `mockEventParticipations`; active participation means
 `status === "registered"`. `joinEvent(id)` creates a participation relationship
 when the event is joinable and is idempotent if the current user is already
-registered.
+registered. `cancelEventParticipation(id)` patches the current user's active
+participation to `canceled`.
 
 `profileService.js` composes profile experiences from normalized user event
 experience records, event view models, friendship records, and the full event
 list. Profile sections are derived as:
 
-- `attended`: explicit user event experience records with memory photo refs.
+- `attended`: explicit user event experience records with memory photo refs,
+  including dedicated experience photos for the current user's profile.
 - `going`: future visible events where the current user is registered.
 - `saved`: future visible events saved by the current user.
 
@@ -583,7 +611,7 @@ Design intent:
 
 - Messages, Search, Community, and Notifications are placeholders.
 - Filter and share actions are logged placeholders.
-- There is no real backend; local mutations reset on reload.
+- There is no real backend; save, join, and cancel mutations reset on reload.
 - Going and Saved profile map views are placeholders.
 - Event detail review copy is placeholder text, and the mini map does not yet
   expose external directions or deep-link map actions.

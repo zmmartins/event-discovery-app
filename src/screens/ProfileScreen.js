@@ -45,11 +45,11 @@ const PROFILE_VIEWS = [
   { icon: "map", label: "Map", value: "map" },
 ];
 const SHEET_EXPANDED_TOP_OFFSET = 84;
-const SHEET_COLLAPSED_SUMMARY_EXTRA_PADDING = 44;
+const SHEET_COLLAPSED_SUMMARY_EXTRA_PADDING = 56;
 const SHEET_COLLAPSED_FALLBACK_VISIBLE_HEIGHT = 220;
 const BOTTOM_NAV_COLLAPSED_OVERLAP = 18;
 const SHEET_CORNER_RADIUS = 34;
-const SHEET_SCREEN_MARGIN = 18;
+const SHEET_SCREEN_MARGIN = 10;
 const SHEET_TOP_EXTENSION = 80;
 const SHEET_HORIZONTAL_PADDING = 22;
 const BOTTOM_NAV_RESERVED_HEIGHT = 122;
@@ -101,11 +101,11 @@ function ProfileSummary({ onLayout, profile }) {
   return (
     <View onLayout={onLayout} style={styles.summary}>
       <View style={styles.nameBlock}>
-        <Text numberOfLines={2} style={styles.name}>
-          {profile.name}
-        </Text>
         <Text numberOfLines={1} style={styles.username}>
           @{profile.username}
+        </Text>
+        <Text numberOfLines={2} style={styles.name}>
+          {profile.name}
         </Text>
       </View>
 
@@ -323,11 +323,14 @@ export default function ProfileScreen() {
     going: "list",
     saved: "list",
   });
+  const [isPhotoRailGestureActive, setIsPhotoRailGestureActive] = useState(false);
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
   const [isSheetScrollEnabled, setIsSheetScrollEnabled] = useState(false);
   const [profile, setProfile] = useState(null);
 
   const currentSheetY = useRef(collapsedTop);
+  const isPhotoRailGestureActiveRef = useRef(false);
+  const isSheetScrollEnabledRef = useRef(false);
   const scrollOffsetY = useRef(0);
   const scrollViewRef = useRef(null);
   const hasInitializedSheet = useRef(false);
@@ -379,6 +382,28 @@ export default function ProfileScreen() {
       currentHeight === nextHeight ? currentHeight : nextHeight
     );
   }, []);
+
+  useEffect(() => {
+    isSheetScrollEnabledRef.current = isSheetScrollEnabled;
+  }, [isSheetScrollEnabled]);
+
+  const handlePhotoRailGestureActiveChange = useCallback((isActive) => {
+    isPhotoRailGestureActiveRef.current = isActive;
+
+    setIsPhotoRailGestureActive((currentValue) =>
+      currentValue === isActive ? currentValue : isActive
+    );
+
+    scrollViewRef.current?.setNativeProps?.({
+      scrollEnabled: isActive ? false : isSheetScrollEnabledRef.current,
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollViewRef.current?.setNativeProps?.({
+      scrollEnabled: isSheetScrollEnabled && !isPhotoRailGestureActive,
+    });
+  }, [isPhotoRailGestureActive, isSheetScrollEnabled]);
 
   useFocusEffect(
     useCallback(() => {
@@ -480,6 +505,7 @@ export default function ProfileScreen() {
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+          if (isPhotoRailGestureActiveRef.current) return false;
           if (!isMostlyVerticalGesture(gestureState)) return false;
 
           const isDraggingDown = gestureState.dy > 0;
@@ -490,6 +516,7 @@ export default function ProfileScreen() {
           return isDraggingDown && isAtTopOfScroll;
         },
         onMoveShouldSetPanResponder: (_, gestureState) => {
+          if (isPhotoRailGestureActiveRef.current) return false;
           if (!isMostlyVerticalGesture(gestureState)) return false;
 
           if (!isSheetExpandedRef.current) return true;
@@ -632,6 +659,7 @@ export default function ProfileScreen() {
               experience={experience}
               key={experience.id}
               onOpen={() => openEvent(experience.event.id)}
+              onPhotoRailGestureActiveChange={handlePhotoRailGestureActiveChange}
               onSavedChange={refreshProfile}
               screen="ProfileScreen"
               source="profile_attended_list"
@@ -754,7 +782,7 @@ export default function ProfileScreen() {
             scrollOffsetY.current = event.nativeEvent.contentOffset.y;
           }}
           ref={scrollViewRef}
-          scrollEnabled={isSheetScrollEnabled}
+          scrollEnabled={isSheetScrollEnabled && !isPhotoRailGestureActive}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={styles.sheetScroller}
@@ -837,13 +865,13 @@ const styles = StyleSheet.create({
   },
   sheetContent: {
     paddingHorizontal: SHEET_HORIZONTAL_PADDING,
-    paddingTop: 24,
+    paddingTop: 20,
   },
   sheetBody: {
     flex: 1,
   },
   summary: {
-    gap: 16,
+    gap: 12,
   },
   nameBlock: {
     minWidth: 0,
@@ -855,33 +883,34 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0,
     lineHeight: 32,
+    textAlign: "center",
   },
   username: {
+    alignSelf: "center",
     color: colors.secondaryText,
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: 0,
-    marginTop: 6,
+    marginBottom: 6,
+    textAlign: "center",
   },
   statsRow: {
+    alignItems: "flex-start",
     flexDirection: "row",
-    gap: 12,
-    marginTop: 4,
+    justifyContent: "space-between",
   },
   stat: {
-    alignItems: "flex-start",
-    backgroundColor: "rgba(255, 255, 255, 0.48)",
-    borderRadius: 18,
+    alignItems: "center",
     flex: 1,
-    minHeight: 58,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    justifyContent: "center",
+    minHeight: 54,
   },
   statValue: {
     color: colors.text,
     fontSize: 22,
     fontWeight: "900",
     lineHeight: 26,
+    textAlign: "center",
   },
   statLabel: {
     color: colors.secondaryText,
@@ -889,6 +918,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0,
     marginTop: 2,
+    textAlign: "center",
   },
   sectionTabs: {
     borderBottomColor: "rgba(14, 30, 22, 0.12)",

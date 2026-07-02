@@ -53,6 +53,14 @@ const BACK_BUTTON_TOP_OFFSET = 12;
 const SHEET_HANDLE_HEIGHT = 7;
 const SHEET_HANDLE_TOP_PADDING = 10;
 const SHEET_HANDLE_BOTTOM_PADDING = 18;
+const HERO_IMAGE_HEIGHT_RATIO = 0.66;
+const HERO_IMAGE_DASH_WIDTH = 8;
+const HERO_IMAGE_ACTIVE_DASH_WIDTH = 22;
+const HERO_IMAGE_DASH_HEIGHT = 4;
+const HERO_IMAGE_DASH_GAP = 9;
+const HERO_IMAGE_DASH_HIT_HEIGHT = 22;
+const HERO_IMAGE_DASH_RAIL_WIDTH = 56;
+const HERO_IMAGE_DASH_RIGHT_OFFSET = 14;
 const MINI_MAP_HEIGHT = 190;
 const MINI_MAP_LATITUDE_DELTA = 0.012;
 const MINI_MAP_LONGITUDE_DELTA = 0.012;
@@ -709,6 +717,166 @@ function getJoinButtonLabel(event) {
   return "I'm Going";
 }
 
+function getEventHeroImageKeys(event) {
+  const imageKeys = Array.isArray(event?.imageKeys)
+    ? event.imageKeys.filter(Boolean)
+    : [];
+
+  if (imageKeys.length > 0) {
+    return imageKeys;
+  }
+
+  return event?.thumbnailKey ? [event.thumbnailKey] : [];
+}
+
+function getClampedImageIndex(index, imageCount) {
+  if (imageCount <= 0) return 0;
+
+  return clamp(index, 0, imageCount - 1);
+}
+
+function EventHeroImageGallery({
+  activeIndex,
+  imageKeys,
+  onSelectIndex,
+  topInset = 0,
+}) {
+  const railRef = useRef(null);
+  const railLayoutRef = useRef({
+    height: 1,
+    pageY: 0,
+    width: HERO_IMAGE_DASH_RAIL_WIDTH,
+  });
+
+  const safeImageKeys = Array.isArray(imageKeys) ? imageKeys : [];
+  const imageCount = safeImageKeys.length;
+
+  const selectIndex = useCallback(
+    (nextIndex) => {
+      if (imageCount <= 1) return;
+
+      const clampedIndex = getClampedImageIndex(nextIndex, imageCount);
+
+      onSelectIndex?.(clampedIndex);
+    },
+    [imageCount, onSelectIndex]
+  );
+
+  const selectIndexFromTouch = useCallback(
+    (nativeEvent) => {
+      if (imageCount <= 1) return;
+
+      const touch = nativeEvent?.touches?.[0] ?? nativeEvent?.changedTouches?.[0];
+      const pageY = touch?.pageY ?? nativeEvent?.pageY;
+
+      if (!Number.isFinite(pageY)) return;
+
+      const { height, pageY: railPageY } = railLayoutRef.current;
+      const relativeY = clamp(pageY - railPageY, 0, Math.max(height, 1));
+      const stepHeight = Math.max(height / imageCount, 1);
+      const nextIndex = Math.floor(relativeY / stepHeight);
+
+      selectIndex(nextIndex);
+    },
+    [imageCount, selectIndex]
+  );
+
+  const dashPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => imageCount > 1,
+        onStartShouldSetPanResponderCapture: () => imageCount > 1,
+        onMoveShouldSetPanResponder: () => imageCount > 1,
+        onMoveShouldSetPanResponderCapture: () => imageCount > 1,
+
+        onPanResponderGrant: (responderEvent) => {
+          selectIndexFromTouch(responderEvent.nativeEvent);
+        },
+
+        onPanResponderMove: (responderEvent) => {
+          selectIndexFromTouch(responderEvent.nativeEvent);
+        },
+
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
+      }),
+    [imageCount, selectIndexFromTouch]
+  );
+
+  if (imageCount === 0) return null;
+
+  const clampedActiveIndex = getClampedImageIndex(activeIndex, imageCount);
+  const activeImageKey = safeImageKeys[clampedActiveIndex];
+
+  return (
+    <View pointerEvents="box-none" style={styles.heroImageGalleryLayer}>
+      <Image
+        pointerEvents="none"
+        resizeMode="cover"
+        source={getEventDetailImage(activeImageKey)}
+        style={styles.heroImage}
+      />
+
+      {imageCount > 1 && (
+        <View
+          onLayout={(layoutEvent) => {
+            const { height, width } = layoutEvent.nativeEvent.layout;
+            const nextLayout = {
+              height: Math.max(height, 1),
+              pageY: railLayoutRef.current.pageY,
+              width: Math.max(width, 1),
+            };
+
+            railLayoutRef.current = nextLayout;
+            railRef.current?.measureInWindow?.((_, pageY) => {
+              railLayoutRef.current = {
+                ...nextLayout,
+                pageY,
+              };
+            });
+          }}
+          ref={railRef}
+          style={[
+            styles.heroImageDashRail,
+            {
+              top: topInset + 108,
+            },
+          ]}
+          {...dashPanResponder.panHandlers}
+        >
+          {safeImageKeys.map((imageKey, index) => {
+            const isActive = index === clampedActiveIndex;
+
+            return (
+              <Pressable
+                accessibilityLabel={`Show event image ${index + 1}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                hitSlop={{
+                  bottom: 7,
+                  left: 14,
+                  right: 14,
+                  top: 7,
+                }}
+                key={`${imageKey}-${index}`}
+                onPress={() => selectIndex(index)}
+                style={styles.heroImageDashHitArea}
+              >
+                <View
+                  style={[
+                    styles.heroImageDash,
+                    isActive && styles.heroImageDashActive,
+                  ]}
+                />
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams();
   const eventId = Array.isArray(id) ? id[0] : id;
@@ -721,6 +889,7 @@ export default function EventDetailScreen() {
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
   const [isMiniMapInteracting, setIsMiniMapInteracting] = useState(false);
   const [isParticipationUpdating, setIsParticipationUpdating] = useState(false);
+  const [selectedHeroImageIndex, setSelectedHeroImageIndex] = useState(0);
   const sheetY = useRef(new Animated.Value(0)).current;
   const currentSheetY = useRef(0);
   const sheetStartY = useRef(0);
@@ -971,6 +1140,27 @@ export default function EventDetailScreen() {
     }, [eventId, pathname])
   );
 
+  const heroImageKeys = useMemo(() => getEventHeroImageKeys(event), [event]);
+
+  useEffect(() => {
+    setSelectedHeroImageIndex(0);
+  }, [event?.id]);
+
+  useEffect(() => {
+    setSelectedHeroImageIndex((currentIndex) =>
+      getClampedImageIndex(currentIndex, heroImageKeys.length)
+    );
+  }, [heroImageKeys.length]);
+
+  const handleHeroImageSelect = useCallback((nextIndex) => {
+    setSelectedHeroImageIndex((currentIndex) => {
+      if (currentIndex === nextIndex) return currentIndex;
+
+      Haptics.selectionAsync().catch(() => null);
+      return nextIndex;
+    });
+  }, []);
+
   async function handleJoin() {
     if (isParticipationUpdating) return;
 
@@ -1121,7 +1311,6 @@ export default function EventDetailScreen() {
     );
   }
 
-  const imageSource = getEventDetailImage(event.thumbnailKey);
   const price = event.price?.toUpperCase?.() ?? "FREE";
   const timeRange = getEventTimeRange(event);
   const statusBarVariant = isSheetExpanded ? "lightBackground" : "image";
@@ -1133,7 +1322,12 @@ export default function EventDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <Image source={imageSource} style={styles.heroImage} />
+      <EventHeroImageGallery
+        activeIndex={selectedHeroImageIndex}
+        imageKeys={heroImageKeys}
+        onSelectIndex={handleHeroImageSelect}
+        topInset={insets.top}
+      />
       <ScreenStatusBar variant={statusBarVariant} withImageOverlay={!isSheetExpanded} />
 
       <Pressable
@@ -1313,14 +1507,53 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center",
   },
+  heroImageGalleryLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
   heroImage: {
-    height: "66%",
+    height: `${HERO_IMAGE_HEIGHT_RATIO * 100}%`,
     left: 0,
     position: "absolute",
     resizeMode: "cover",
     right: 0,
     top: 0,
     width: "100%",
+  },
+  heroImageDashRail: {
+    alignItems: "flex-end",
+    gap: HERO_IMAGE_DASH_GAP,
+    justifyContent: "center",
+    minHeight: 120,
+    paddingVertical: 8,
+    position: "absolute",
+    right: HERO_IMAGE_DASH_RIGHT_OFFSET,
+    width: HERO_IMAGE_DASH_RAIL_WIDTH,
+  },
+  heroImageDashHitArea: {
+    alignItems: "flex-end",
+    height: HERO_IMAGE_DASH_HIT_HEIGHT,
+    justifyContent: "center",
+    width: HERO_IMAGE_DASH_RAIL_WIDTH,
+  },
+  heroImageDash: {
+    backgroundColor: colors.effects.surfaceRaised,
+    borderRadius: HERO_IMAGE_DASH_HEIGHT / 2,
+    height: HERO_IMAGE_DASH_HEIGHT,
+    opacity: 0.68,
+    shadowColor: colors.effects.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.16,
+    shadowRadius: 4,
+    width: HERO_IMAGE_DASH_WIDTH,
+  },
+  heroImageDashActive: {
+    backgroundColor: colors.primary,
+    opacity: 1,
+    width: HERO_IMAGE_ACTIVE_DASH_WIDTH,
   },
   backButton: {
     alignItems: "center",

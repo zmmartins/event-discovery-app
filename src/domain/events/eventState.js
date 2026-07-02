@@ -143,14 +143,17 @@ function createAttendee(user) {
   };
 }
 
-function getEventImages(images = [], eventId) {
+function getEventImageRecords(images = [], eventId) {
   return images
     .filter((image) => image.eventId === eventId)
     .sort((firstImage, secondImage) => {
-      const firstSortOrder = Number(firstImage.sortOrder) || 0;
-      const secondSortOrder = Number(secondImage.sortOrder) || 0;
+      const sortDelta =
+        (Number(firstImage.sortOrder) || 0) -
+        (Number(secondImage.sortOrder) || 0);
 
-      return firstSortOrder - secondSortOrder;
+      if (sortDelta !== 0) return sortDelta;
+
+      return String(firstImage.id ?? "").localeCompare(String(secondImage.id ?? ""));
     });
 }
 
@@ -229,9 +232,13 @@ export function createEventViewModel({
   if (!event) return null;
 
   const usersById = createMap(users);
-  const eventImages = getEventImages(images, event.id);
+  const eventImages = getEventImageRecords(images, event.id);
   const coverImage =
     eventImages.find((image) => image.role === "cover") ?? eventImages[0];
+  const fallbackThumbnailKey = coverImage?.imageKey ?? "art_gallery1";
+  const eventImageKeys = eventImages.map((image) => image.imageKey).filter(Boolean);
+  const thumbnailKey = eventImageKeys[0] ?? fallbackThumbnailKey;
+  const imageKeys = eventImageKeys.length > 0 ? eventImageKeys : [thumbnailKey];
   const activeParticipations = getActiveParticipationsForEvent(
     participations,
     event.id
@@ -280,6 +287,7 @@ export function createEventViewModel({
       usersById,
     }),
     images: eventImages.map((image) => ({ ...image })),
+    imageKeys,
     isJoined,
     isSaved,
     latitude: location?.coordinates?.latitude,
@@ -288,7 +296,7 @@ export function createEventViewModel({
     organizerName: organizer?.name ?? "Unknown organizer",
     price: formatPriceLabel(event.price),
     startsAt: event.startsAt,
-    thumbnailKey: coverImage?.imageKey ?? "art_gallery1",
+    thumbnailKey,
     time,
   };
 }

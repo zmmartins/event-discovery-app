@@ -106,12 +106,22 @@ export const mockUserEventExperiences = [
     participationId: null,
     attendedAt: "2026-04-24T20:00:00Z",
     photoRefs: [
-      { id: "photo-001-1", imageKey: "art_gallery1" },
-      { id: "photo-001-2", imageKey: "concert" },
-      { id: "photo-001-3", imageKey: "sunset1" },
-      { id: "photo-001-4", imageKey: "art_gallery1" },
-      { id: "photo-001-5", imageKey: "concert" },
-      { id: "photo-001-6", imageKey: "art_gallery1" },
+      {
+        id: "photo-cascais-print-salon-1",
+        imageKey: "cascais_print_salon_experience_1",
+      },
+      {
+        id: "photo-cascais-print-salon-2",
+        imageKey: "cascais_print_salon_experience_2",
+      },
+      {
+        id: "photo-cascais-print-salon-3",
+        imageKey: "cascais_print_salon_experience_3",
+      },
+      {
+        id: "photo-cascais-print-salon-4",
+        imageKey: "cascais_print_salon_experience_4",
+      },
     ],
   },
   {
@@ -121,10 +131,22 @@ export const mockUserEventExperiences = [
     participationId: null,
     attendedAt: "2026-04-12T20:00:00Z",
     photoRefs: [
-      { id: "photo-002-1", imageKey: "sunset1" },
-      { id: "photo-002-2", imageKey: "art_gallery2" },
-      { id: "photo-002-3", imageKey: "concert" },
-      { id: "photo-002-4", imageKey: "sunset1" },
+      {
+        id: "photo-new-york-tile-room-1",
+        imageKey: "new_york_tile_room_experience_1",
+      },
+      {
+        id: "photo-new-york-tile-room-2",
+        imageKey: "new_york_tile_room_experience_2",
+      },
+      {
+        id: "photo-new-york-tile-room-3",
+        imageKey: "new_york_tile_room_experience_3",
+      },
+      {
+        id: "photo-new-york-tile-room-4",
+        imageKey: "new_york_tile_room_experience_4",
+      },
     ],
   },
   {
@@ -134,9 +156,18 @@ export const mockUserEventExperiences = [
     participationId: null,
     attendedAt: "2026-03-29T20:00:00Z",
     photoRefs: [
-      { id: "photo-003-1", imageKey: "concert" },
-      { id: "photo-003-2", imageKey: "art_gallery3" },
-      { id: "photo-003-3", imageKey: "sunset1" },
+      {
+        id: "photo-berlin-illustration-1",
+        imageKey: "berlin_illustration_experience_1",
+      },
+      {
+        id: "photo-berlin-illustration-2",
+        imageKey: "berlin_illustration_experience_2",
+      },
+      {
+        id: "photo-berlin-illustration-3",
+        imageKey: "berlin_illustration_experience_3",
+      },
     ],
   },
   {
@@ -146,11 +177,26 @@ export const mockUserEventExperiences = [
     participationId: null,
     attendedAt: "2026-03-08T20:00:00Z",
     photoRefs: [
-      { id: "photo-004-1", imageKey: "sunset1" },
-      { id: "photo-004-2", imageKey: "concert" },
-      { id: "photo-004-3", imageKey: "baking_class2" },
-      { id: "photo-004-4", imageKey: "sunset1" },
-      { id: "photo-004-5", imageKey: "baking_class2" },
+      {
+        id: "photo-copenhagen-sourdough-1",
+        imageKey: "copenhagen_sourdough_experience_1",
+      },
+      {
+        id: "photo-copenhagen-sourdough-2",
+        imageKey: "copenhagen_sourdough_experience_2",
+      },
+      {
+        id: "photo-copenhagen-sourdough-3",
+        imageKey: "copenhagen_sourdough_experience_3",
+      },
+      {
+        id: "photo-copenhagen-sourdough-4",
+        imageKey: "copenhagen_sourdough_experience_4",
+      },
+      {
+        id: "photo-copenhagen-sourdough-5",
+        imageKey: "copenhagen_sourdough_experience_5",
+      },
     ],
   },
   {

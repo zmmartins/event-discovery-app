@@ -664,7 +664,7 @@ export const mockEvents = [
   },
 ];
 
-export const mockEventImages = [
+const mockEventImageCoverRecords = [
   {
     id: "event-image-event-001-cover",
     eventId: "event-001",
@@ -778,6 +778,17 @@ export const mockEventImages = [
     sortOrder: 1,
   },
 ];
+
+export const mockEventImages = mockEventImageCoverRecords.flatMap((image) => [
+  image,
+  ...[2, 3, 4].map((sortOrder) => ({
+    eventId: image.eventId,
+    id: `event-image-${image.eventId}-detail-${sortOrder}`,
+    imageKey: image.imageKey,
+    role: "detail",
+    sortOrder,
+  })),
+]);
 
 export const mockEventParticipations = [
   {
