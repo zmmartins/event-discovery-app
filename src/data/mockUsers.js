@@ -6,6 +6,8 @@ export const mockUsers = [
     username: "jose_lisboa",
     name: "Jose Pereira",
     email: "jose@example.com",
+    description:
+      "Collecting small cultural moments, design-heavy spaces, and weekends worth remembering.",
     avatarKey: "joao",
     passwordHash: "mock-only",
   },

@@ -77,6 +77,7 @@ export async function getCurrentUserProfile() {
 
   return {
     avatarKey: currentUser.avatarKey,
+    description: currentUser.description ?? "",
     heroImageKey: currentUser.heroImageKey ?? currentUser.avatarKey,
     id: currentUser.id,
     name: currentUser.name,

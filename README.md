@@ -30,8 +30,8 @@ a real backend yet.
   friendships, active participations, an initially empty saved-events
   collection, and profile experience records.
 - The current user's attended profile records use dedicated memory-photo assets
-  from `src/assets/experiences`; friend history can reuse event image keys for
-  social context.
+  from `src/assets/experiences` and are validated against attended
+  participation records within each event's actual time window.
 - `getUpcomingEvents()` filters seed events by the current runtime date,
   lifecycle status, capacity, and participation state, so the visible Explore
   set changes as the mock event dates pass.
@@ -52,8 +52,9 @@ Implemented app surfaces:
   interactive mini map, social context, save, join, and cancel-attendance
   controls, haptics, and logging.
 - Profile screen with Attended, Going, and Saved sections, section-specific
-  list/map selectors, attended memory-ticket cards, attended map pins, and
-  upcoming/saved event feeds or empty states.
+  list/map selectors, attended memory-ticket cards, section-specific map pins,
+  future/saved event feeds, and empty states when a section has no matching
+  data.
 - Shake to Discover with accelerometer detection, vibration, haptics, a styled
   discovery circle, Discovery Mode activation, and redirect to the filtered
   list.
@@ -323,20 +324,22 @@ review-card copy.
 Current behavior:
 
 - full-screen avatar/hero background with a draggable blurred profile sheet;
-- profile summary with display name, username, and derived stats;
+- floating liquid-glass username pill, stacked display name, and derived stats;
 - Attended, Going, and Saved sections with counts;
 - per-section list/map selector;
 - Attended list cards from explicit profile experience records;
 - attended cards use `ProfileExperienceCard`, a single masked ticket body with
-  SVG-clipped side notches and bottom perforations, an image-to-dark gradient,
-  save/details controls, and haptic/logged interactions;
+  SVG-clipped side notches and bottom perforations, image-to-dark lighting,
+  a glossy arrow detail control, and haptic/logged interactions;
 - attended memory media supports mosaic grid mode, full-image mode, vertical
-  dash rail selection, and an expanded image modal;
-- Attended map using `ExperiencePin` and random memory photos from each
+  dash rail selection, and smooth inline ticket image expansion based on the
+  selected image aspect ratio;
+- Attended map uses `ExperiencePin` and random memory photos from each
   experience;
 - Going and Saved list views render two-column `EventCard` feeds when records
   exist and empty states otherwise;
-- Going and Saved map views are placeholder states for now.
+- Going and Saved map views render regular event pins for their section data
+  and use non-scrollable map mode that fills the available profile sheet space.
 
 ### Shake To Discover
 
@@ -531,23 +534,30 @@ Availability is computed as `available`, `sold_out`, `canceled`, or
 count, and `maximumCapacity`.
 
 Saved state is represented by `mockUserSavedEvents`, which is currently seeded
-empty and grows or shrinks in memory when the current user toggles saves. Join
-state is represented by `mockEventParticipations`; active participation means
-`status === "registered"`. `joinEvent(id)` creates a participation relationship
-when the event is joinable and is idempotent if the current user is already
-registered. `cancelEventParticipation(id)` patches the current user's active
-participation to `canceled`.
+empty and grows or shrinks in memory when the current user toggles saves.
+Saving is only allowed for saveable published events, so past events do not
+surface save state or save actions. Join state is represented by
+`mockEventParticipations`; active participation means
+`status === "registered"`. `joinEvent(id)` creates a participation
+relationship when the event is joinable and is idempotent if the current user
+is already registered. `cancelEventParticipation(id)` patches the current
+user's active participation to `canceled`.
 
 `profileService.js` composes profile experiences from normalized user event
-experience records, event view models, friendship records, and the full event
-list. Profile sections are derived as:
+experience records, event view models, friendship records, participation
+records, and the full event list. Profile sections are derived as:
 
-- `attended`: explicit user event experience records with memory photo refs,
-  including dedicated experience photos for the current user's profile.
-- `going`: future visible events where the current user is registered.
-- `saved`: future visible events saved by the current user.
+- `attended`: explicit user event experience records that match an existing
+  past event, an attended participation for the same user/event, and attended
+  timestamps inside the event window.
+- `going`: future visible events where the current user is actively registered.
+- `saved`: saved events that are still saveable, meaning currently available or
+  sold-out published events.
 
-Only attended events currently produce profile map pins.
+Each profile section produces its own map pins. Attended pins can use memory
+photos through `ExperiencePin`; Going and Saved pins use regular `EventPin`
+markers. Empty sections show empty states instead of borrowing data from another
+section.
 
 ## Interaction Logging
 
@@ -612,7 +622,6 @@ Design intent:
 - Messages, Search, Community, and Notifications are placeholders.
 - Filter and share actions are logged placeholders.
 - There is no real backend; save, join, and cancel mutations reset on reload.
-- Going and Saved profile map views are placeholders.
 - Event detail review copy is placeholder text, and the mini map does not yet
   expose external directions or deep-link map actions.
 - Web is not a supported validation target for the current map-heavy route

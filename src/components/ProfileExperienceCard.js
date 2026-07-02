@@ -64,6 +64,20 @@ const EXPERIENCE_PHOTO_DASH_RAIL_WIDTH = 48;
 const EXPERIENCE_MEDIA_TOGGLE_TOP = 10;
 const EXPERIENCE_MEDIA_TOGGLE_RIGHT = 10;
 
+const TICKET_IMAGE_SPRING_CONFIG = {
+  damping: 25,
+  mass: 0.88,
+  stiffness: 160,
+  useNativeDriver: false,
+};
+
+const TICKET_IMAGE_HEIGHT_SPRING_CONFIG = {
+  damping: 26,
+  mass: 0.9,
+  stiffness: 155,
+  useNativeDriver: false,
+};
+
 function createCirclePath(cx, cy, radius) {
   return [
     `M ${cx - radius} ${cy}`,
@@ -191,6 +205,48 @@ function getPhotoAspectRatio(photoRef) {
   );
 }
 
+function getExpandedPhotoHeight(width, aspectRatio) {
+  const safeWidth = Number(width);
+  const safeAspectRatio = Number(aspectRatio);
+
+  if (!Number.isFinite(safeWidth) || safeWidth <= 0) {
+    return EXPERIENCE_TICKET_MEDIA_HEIGHT;
+  }
+
+  const resolvedAspectRatio =
+    Number.isFinite(safeAspectRatio) && safeAspectRatio > 0 ? safeAspectRatio : 1;
+
+  return Math.round(Math.min(Math.max(safeWidth / resolvedAspectRatio, 320), 520));
+}
+
+function getSafePhotoFrame(frame, fallbackFrame) {
+  const safeFallbackFrame = {
+    height:
+      Number.isFinite(fallbackFrame?.height) && fallbackFrame.height > 0
+        ? fallbackFrame.height
+        : 1,
+    left: Number.isFinite(fallbackFrame?.left) ? fallbackFrame.left : 0,
+    top: Number.isFinite(fallbackFrame?.top) ? fallbackFrame.top : 0,
+    width:
+      Number.isFinite(fallbackFrame?.width) && fallbackFrame.width > 0
+        ? fallbackFrame.width
+        : 1,
+  };
+
+  return {
+    height:
+      Number.isFinite(frame?.height) && frame.height > 0
+        ? frame.height
+        : safeFallbackFrame.height,
+    left: Number.isFinite(frame?.left) ? frame.left : safeFallbackFrame.left,
+    top: Number.isFinite(frame?.top) ? frame.top : safeFallbackFrame.top,
+    width:
+      Number.isFinite(frame?.width) && frame.width > 0
+        ? frame.width
+        : safeFallbackFrame.width,
+  };
+}
+
 function getPhotoLayoutItems(photoRefs = []) {
   return photoRefs.map((photoRef, index) => {
     const aspectRatio = getPhotoAspectRatio(photoRef);
@@ -198,6 +254,7 @@ function getPhotoLayoutItems(photoRefs = []) {
     return {
       aspectRatio,
       id: photoRef.id ?? `${photoRef.imageKey}-${index}`,
+      index,
       photoRef,
       source: getPhotoSource(photoRef),
       weight: aspectRatio * (index === 0 ? EXPERIENCE_PHOTO_PRIMARY_WEIGHT : 1),
@@ -339,7 +396,13 @@ function AttendeeStack({ attendees }) {
   );
 }
 
-function ProfileExperiencePhotoGrid({ eventTitle, onOpenImage, photoRefs }) {
+function ProfileExperiencePhotoGrid({
+  eventTitle,
+  hiddenPhotoIndex,
+  onOpenImage,
+  onPhotoLayout,
+  photoRefs,
+}) {
   const [gridWidth, setGridWidth] = useState(0);
 
   const safePhotoRefs = useMemo(() => getSafePhotoRefs(photoRefs), [photoRefs]);
@@ -359,6 +422,17 @@ function ProfileExperiencePhotoGrid({ eventTitle, onOpenImage, photoRefs }) {
     });
   }, [gridWidth, layoutItems]);
 
+  useEffect(() => {
+    tiles.forEach((tile) => {
+      onPhotoLayout?.(tile.item.index, {
+        height: tile.height,
+        left: tile.left,
+        top: tile.top,
+        width: tile.width,
+      });
+    });
+  }, [onPhotoLayout, tiles]);
+
   const handleLayout = useCallback((event) => {
     const nextWidth = Math.round(event.nativeEvent.layout.width);
 
@@ -373,9 +447,9 @@ function ProfileExperiencePhotoGrid({ eventTitle, onOpenImage, photoRefs }) {
 
   return (
     <View onLayout={handleLayout} style={styles.photoGrid}>
-      {tiles.map((tile, index) => (
+      {tiles.map((tile) => (
         <View
-          key={`${tile.item.id}-${index}`}
+          key={`${tile.item.id}-${tile.item.index}`}
           style={[
             styles.photoGridTile,
             {
@@ -384,19 +458,20 @@ function ProfileExperiencePhotoGrid({ eventTitle, onOpenImage, photoRefs }) {
               top: tile.top,
               width: tile.width,
             },
+            hiddenPhotoIndex === tile.item.index && styles.photoHiddenDuringTransition,
           ]}
         >
           <Pressable
-            accessibilityLabel={`Open ${eventTitle} memory ${index + 1}`}
+            accessibilityLabel={`Open ${eventTitle} memory ${tile.item.index + 1}`}
             accessibilityRole="imagebutton"
             onPress={(pressEvent) => {
               pressEvent?.stopPropagation?.();
-              onOpenImage?.(index);
+              onOpenImage?.(tile.item.index);
             }}
             style={styles.photoGridImageButton}
           >
             <Image
-              accessibilityLabel={`${eventTitle} memory ${index + 1}`}
+              accessibilityLabel={`${eventTitle} memory ${tile.item.index + 1}`}
               resizeMode="cover"
               source={tile.item.source}
               style={styles.photoGridImage}
@@ -412,12 +487,18 @@ function ProfileExperienceFullImageView({
   activeIndex,
   eventTitle,
   height = EXPERIENCE_PHOTO_GRID_HEIGHT,
+  hiddenPhotoIndex,
   onOpenImage,
+  onPhotoLayout,
   onPhotoRailGestureActiveChange,
   onSelectIndex,
   photoRefs,
 }) {
   const railRef = useRef(null);
+  const fullPhotoLayoutRef = useRef({
+    height: 0,
+    width: 0,
+  });
   const railLayoutRef = useRef({
     height: 1,
     pageX: 0,
@@ -431,6 +512,27 @@ function ProfileExperienceFullImageView({
   const photoCount = safePhotoRefs.length;
   const clampedActiveIndex = getClampedPhotoIndex(activeIndex, photoCount);
   const activePhotoRef = safePhotoRefs[clampedActiveIndex];
+
+  const reportActivePhotoLayout = useCallback(
+    (layout) => {
+      const nextWidth = Math.round(layout.width);
+      const nextHeight = Math.round(layout.height);
+
+      if (nextWidth <= 0 || nextHeight <= 0) return;
+
+      onPhotoLayout?.(clampedActiveIndex, {
+        height: nextHeight,
+        left: 0,
+        top: 0,
+        width: nextWidth,
+      });
+    },
+    [clampedActiveIndex, onPhotoLayout]
+  );
+
+  useEffect(() => {
+    reportActivePhotoLayout(fullPhotoLayoutRef.current);
+  }, [reportActivePhotoLayout]);
 
   const selectIndex = useCallback(
     (nextIndex) => {
@@ -565,6 +667,15 @@ function ProfileExperienceFullImageView({
 
   return (
     <View
+      onLayout={(layoutEvent) => {
+        const { height: nextHeight, width: nextWidth } = layoutEvent.nativeEvent.layout;
+
+        fullPhotoLayoutRef.current = {
+          height: nextHeight,
+          width: nextWidth,
+        };
+        reportActivePhotoLayout(fullPhotoLayoutRef.current);
+      }}
       onTouchStartCapture={handleFullPhotoTouchStartCapture}
       style={[styles.fullPhotoView, { height }]}
       {...fullPhotoPanResponder.panHandlers}
@@ -582,7 +693,10 @@ function ProfileExperienceFullImageView({
           accessibilityLabel={`${eventTitle} memory ${clampedActiveIndex + 1}`}
           resizeMode="cover"
           source={getPhotoSource(activePhotoRef)}
-          style={styles.fullPhotoImage}
+          style={[
+            styles.fullPhotoImage,
+            hiddenPhotoIndex === clampedActiveIndex && styles.photoHiddenDuringTransition,
+          ]}
         />
       </Pressable>
 
@@ -644,7 +758,19 @@ export default function ProfileExperienceCard({
   const [mediaMode, setMediaMode] = useState("grid");
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [isTicketImageExpanded, setIsTicketImageExpanded] = useState(false);
+  const [isTicketImageTransitioning, setIsTicketImageTransitioning] = useState(false);
+  const [isTicketImageCollapsing, setIsTicketImageCollapsing] = useState(false);
+  const [ticketImageTransition, setTicketImageTransition] = useState(null);
   const ticketImageExpandProgress = useRef(new Animated.Value(0)).current;
+  const ticketHeroHeight = useRef(
+    new Animated.Value(EXPERIENCE_TICKET_MEDIA_HEIGHT)
+  ).current;
+  const [animatedHeroHeight, setAnimatedHeroHeight] = useState(
+    EXPERIENCE_TICKET_MEDIA_HEIGHT
+  );
+  const lastMeasuredHeroHeightRef = useRef(EXPERIENCE_TICKET_MEDIA_HEIGHT);
+  const photoFramesRef = useRef({ grid: {}, image: {} });
+  const isTicketImageTransitioningRef = useRef(false);
   const [ticketSize, setTicketSize] = useState({ height: 0, width: 0 });
   const price = event.price?.toUpperCase?.() ?? "";
   const organizerName =
@@ -659,30 +785,146 @@ export default function ProfileExperienceCard({
     [experience.photoRefs]
   );
   const hasMultiplePhotos = photoRefs.length > 1;
-  const activeExpandedPhotoRef =
-    photoRefs[getClampedPhotoIndex(activePhotoIndex, photoRefs.length)];
-  const activeExpandedPhotoAspectRatio = activeExpandedPhotoRef
-    ? getPhotoAspectRatio(activeExpandedPhotoRef)
-    : 1;
-  const expandedHeroHeight =
-    ticketSize.width > 0
-      ? Math.round(
-          Math.min(
-            Math.max(ticketSize.width / activeExpandedPhotoAspectRatio, 320),
-            520
-          )
-        )
-      : EXPERIENCE_TICKET_MEDIA_HEIGHT;
-  const currentHeroHeight = isTicketImageExpanded
-    ? expandedHeroHeight
-    : EXPERIENCE_TICKET_MEDIA_HEIGHT;
+  const currentHeroHeight = animatedHeroHeight;
+
+  const syncAnimatedHeroHeight = useCallback((nextHeight) => {
+    const roundedHeight = Math.round(nextHeight);
+
+    if (!Number.isFinite(roundedHeight)) return;
+
+    lastMeasuredHeroHeightRef.current = roundedHeight;
+    setAnimatedHeroHeight(roundedHeight);
+  }, []);
+
+  const getExpandedHeroHeightForIndex = useCallback(
+    (index) => {
+      const clampedIndex = getClampedPhotoIndex(index, photoRefs.length);
+      const photoRef = photoRefs[clampedIndex];
+      const aspectRatio = photoRef ? getPhotoAspectRatio(photoRef) : 1;
+
+      return getExpandedPhotoHeight(ticketSize.width, aspectRatio);
+    },
+    [photoRefs, ticketSize.width]
+  );
+
+  const getBaseHeroFrame = useCallback(
+    () => ({
+      height: EXPERIENCE_TICKET_MEDIA_HEIGHT,
+      left: 0,
+      top: 0,
+      width: ticketSize.width || 1,
+    }),
+    [ticketSize.width]
+  );
+
+  const getExpandedHeroFrame = useCallback(
+    (index) => ({
+      height: getExpandedHeroHeightForIndex(index),
+      left: 0,
+      top: 0,
+      width: ticketSize.width || 1,
+    }),
+    [getExpandedHeroHeightForIndex, ticketSize.width]
+  );
+
+  const recordPhotoLayout = useCallback(
+    (mode, index, frame) => {
+      const safeMode = mode === "grid" ? "grid" : "image";
+      const clampedIndex = getClampedPhotoIndex(index, photoRefs.length);
+
+      photoFramesRef.current[safeMode][clampedIndex] = getSafePhotoFrame(
+        frame,
+        getBaseHeroFrame()
+      );
+    },
+    [getBaseHeroFrame, photoRefs.length]
+  );
+
+  const recordGridPhotoLayout = useCallback(
+    (index, frame) => recordPhotoLayout("grid", index, frame),
+    [recordPhotoLayout]
+  );
+
+  const recordImagePhotoLayout = useCallback(
+    (index, frame) => recordPhotoLayout("image", index, frame),
+    [recordPhotoLayout]
+  );
+
+  const getCollapsedPhotoFrame = useCallback(
+    (index) => {
+      const clampedIndex = getClampedPhotoIndex(index, photoRefs.length);
+      const fallbackFrame = getBaseHeroFrame();
+
+      if (mediaMode !== "grid") {
+        return fallbackFrame;
+      }
+
+      return getSafePhotoFrame(photoFramesRef.current.grid[clampedIndex], fallbackFrame);
+    },
+    [getBaseHeroFrame, mediaMode, photoRefs.length]
+  );
+
+  const getTicketImageTransition = useCallback(
+    ({ photoIndex, toExpanded }) => {
+      if (photoRefs.length === 0) return null;
+
+      const clampedIndex = getClampedPhotoIndex(photoIndex, photoRefs.length);
+      const photoRef = photoRefs[clampedIndex];
+
+      if (!photoRef) return null;
+
+      return {
+        fromFrame: getCollapsedPhotoFrame(clampedIndex),
+        photoIndex: clampedIndex,
+        source: getPhotoSource(photoRef),
+        toExpanded,
+        toFrame: getExpandedHeroFrame(clampedIndex),
+      };
+    },
+    [getCollapsedPhotoFrame, getExpandedHeroFrame, photoRefs]
+  );
 
   useEffect(() => {
+    const listenerId = ticketHeroHeight.addListener(({ value }) => {
+      const roundedHeight = Math.round(value);
+
+      if (
+        Number.isFinite(roundedHeight) &&
+        roundedHeight !== lastMeasuredHeroHeightRef.current
+      ) {
+        syncAnimatedHeroHeight(roundedHeight);
+      }
+    });
+
+    return () => {
+      ticketHeroHeight.removeListener(listenerId);
+    };
+  }, [syncAnimatedHeroHeight, ticketHeroHeight]);
+
+  useEffect(() => {
+    isTicketImageTransitioningRef.current = isTicketImageTransitioning;
+  }, [isTicketImageTransitioning]);
+
+  useEffect(() => {
+    ticketImageExpandProgress.stopAnimation();
+    ticketHeroHeight.stopAnimation();
+    ticketImageExpandProgress.setValue(0);
+    ticketHeroHeight.setValue(EXPERIENCE_TICKET_MEDIA_HEIGHT);
+    syncAnimatedHeroHeight(EXPERIENCE_TICKET_MEDIA_HEIGHT);
+    photoFramesRef.current = { grid: {}, image: {} };
     setActivePhotoIndex(0);
     setIsTicketImageExpanded(false);
-    ticketImageExpandProgress.setValue(0);
+    setIsTicketImageTransitioning(false);
+    isTicketImageTransitioningRef.current = false;
+    setIsTicketImageCollapsing(false);
+    setTicketImageTransition(null);
     setMediaMode("grid");
-  }, [experience.id, ticketImageExpandProgress]);
+  }, [
+    experience.id,
+    syncAnimatedHeroHeight,
+    ticketHeroHeight,
+    ticketImageExpandProgress,
+  ]);
 
   useEffect(() => {
     setActivePhotoIndex((currentIndex) =>
@@ -701,52 +943,161 @@ export default function ProfileExperienceCard({
     onOpen?.();
   }
 
-  const handlePhotoIndexSelect = useCallback((nextIndex) => {
-    setActivePhotoIndex((currentIndex) => {
-      if (currentIndex === nextIndex) return currentIndex;
+  const handlePhotoIndexSelect = useCallback(
+    (nextIndex) => {
+      if (photoRefs.length === 0) return;
 
+      const clampedIndex = getClampedPhotoIndex(nextIndex, photoRefs.length);
+
+      if (activePhotoIndex === clampedIndex) return;
+
+      setActivePhotoIndex(clampedIndex);
       Haptics.selectionAsync().catch(() => null);
-      return nextIndex;
-    });
-  }, []);
+
+      if (
+        isTicketImageExpanded &&
+        !isTicketImageTransitioningRef.current &&
+        !isTicketImageCollapsing
+      ) {
+        const nextHeroHeight = getExpandedHeroHeightForIndex(clampedIndex);
+
+        ticketHeroHeight.stopAnimation();
+        Animated.spring(ticketHeroHeight, {
+          ...TICKET_IMAGE_HEIGHT_SPRING_CONFIG,
+          toValue: nextHeroHeight,
+        }).start(({ finished }) => {
+          if (finished) {
+            ticketHeroHeight.setValue(nextHeroHeight);
+            syncAnimatedHeroHeight(nextHeroHeight);
+          }
+        });
+      }
+    },
+    [
+      activePhotoIndex,
+      getExpandedHeroHeightForIndex,
+      isTicketImageCollapsing,
+      isTicketImageExpanded,
+      photoRefs.length,
+      syncAnimatedHeroHeight,
+      ticketHeroHeight,
+    ]
+  );
 
   const handleOpenExpandedImage = useCallback(
     (nextIndex) => {
-      setActivePhotoIndex(getClampedPhotoIndex(nextIndex, photoRefs.length));
-      setIsTicketImageExpanded(true);
+      if (isTicketImageTransitioningRef.current || photoRefs.length === 0) return;
 
-      Animated.spring(ticketImageExpandProgress, {
-        damping: 20,
-        mass: 0.8,
-        stiffness: 180,
-        toValue: 1,
-        useNativeDriver: false,
-      }).start();
+      const clampedIndex = getClampedPhotoIndex(nextIndex, photoRefs.length);
+      const transition = getTicketImageTransition({
+        photoIndex: clampedIndex,
+        toExpanded: true,
+      });
+
+      if (!transition) return;
+
+      ticketImageExpandProgress.stopAnimation();
+      ticketHeroHeight.stopAnimation();
+      ticketImageExpandProgress.setValue(0);
+      ticketHeroHeight.setValue(EXPERIENCE_TICKET_MEDIA_HEIGHT);
+      syncAnimatedHeroHeight(EXPERIENCE_TICKET_MEDIA_HEIGHT);
+      setActivePhotoIndex(clampedIndex);
+      setIsTicketImageExpanded(true);
+      setIsTicketImageTransitioning(true);
+      isTicketImageTransitioningRef.current = true;
+      setIsTicketImageCollapsing(false);
+      setTicketImageTransition(transition);
+
+      Animated.parallel([
+        Animated.spring(ticketImageExpandProgress, {
+          ...TICKET_IMAGE_SPRING_CONFIG,
+          toValue: 1,
+        }),
+        Animated.spring(ticketHeroHeight, {
+          ...TICKET_IMAGE_HEIGHT_SPRING_CONFIG,
+          toValue: transition.toFrame.height,
+        }),
+      ]).start(({ finished }) => {
+        if (!finished) return;
+
+        ticketImageExpandProgress.setValue(1);
+        ticketHeroHeight.setValue(transition.toFrame.height);
+        syncAnimatedHeroHeight(transition.toFrame.height);
+        setIsTicketImageTransitioning(false);
+        isTicketImageTransitioningRef.current = false;
+        setTicketImageTransition(null);
+      });
 
       Haptics.selectionAsync().catch(() => null);
     },
-    [photoRefs.length, ticketImageExpandProgress]
+    [
+      getTicketImageTransition,
+      photoRefs.length,
+      syncAnimatedHeroHeight,
+      ticketHeroHeight,
+      ticketImageExpandProgress,
+    ]
   );
 
   const handleCollapseTicketImage = useCallback(() => {
-    Animated.spring(ticketImageExpandProgress, {
-      damping: 20,
-      mass: 0.8,
-      stiffness: 180,
-      toValue: 0,
-      useNativeDriver: false,
-    }).start(({ finished }) => {
+    if (isTicketImageTransitioningRef.current || photoRefs.length === 0) return;
+
+    const clampedIndex = getClampedPhotoIndex(activePhotoIndex, photoRefs.length);
+    const transition = getTicketImageTransition({
+      photoIndex: clampedIndex,
+      toExpanded: false,
+    });
+
+    if (!transition) return;
+
+    ticketImageExpandProgress.stopAnimation();
+    ticketHeroHeight.stopAnimation();
+    ticketImageExpandProgress.setValue(1);
+    ticketHeroHeight.setValue(transition.toFrame.height);
+    syncAnimatedHeroHeight(transition.toFrame.height);
+    setActivePhotoIndex(clampedIndex);
+    setIsTicketImageCollapsing(true);
+    setIsTicketImageTransitioning(true);
+    isTicketImageTransitioningRef.current = true;
+    setTicketImageTransition(transition);
+
+    Animated.parallel([
+      Animated.spring(ticketImageExpandProgress, {
+        ...TICKET_IMAGE_SPRING_CONFIG,
+        toValue: 0,
+      }),
+      Animated.spring(ticketHeroHeight, {
+        ...TICKET_IMAGE_HEIGHT_SPRING_CONFIG,
+        toValue: EXPERIENCE_TICKET_MEDIA_HEIGHT,
+      }),
+    ]).start(({ finished }) => {
       if (finished) {
+        ticketImageExpandProgress.setValue(0);
+        ticketHeroHeight.setValue(EXPERIENCE_TICKET_MEDIA_HEIGHT);
+        syncAnimatedHeroHeight(EXPERIENCE_TICKET_MEDIA_HEIGHT);
         setIsTicketImageExpanded(false);
+        setIsTicketImageCollapsing(false);
+        setIsTicketImageTransitioning(false);
+        isTicketImageTransitioningRef.current = false;
+        setTicketImageTransition(null);
       }
     });
 
     Haptics.selectionAsync().catch(() => null);
-  }, [ticketImageExpandProgress]);
+  }, [
+    activePhotoIndex,
+    getTicketImageTransition,
+    photoRefs.length,
+    syncAnimatedHeroHeight,
+    ticketHeroHeight,
+    ticketImageExpandProgress,
+  ]);
 
   const handleMediaModeToggle = useCallback(
     (pressEvent) => {
       pressEvent?.stopPropagation?.();
+
+      if (isTicketImageTransitioningRef.current) return;
 
       if (isTicketImageExpanded) {
         handleCollapseTicketImage();
@@ -778,8 +1129,75 @@ export default function ProfileExperienceCard({
     });
   }, []);
 
-  const ticketNotchY =
-    currentHeroHeight + EXPERIENCE_TICKET_SEPARATOR_HEIGHT / 2;
+  const ticketNotchY = currentHeroHeight + EXPERIENCE_TICKET_SEPARATOR_HEIGHT / 2;
+  const transitionPhotoIndex = ticketImageTransition?.photoIndex ?? null;
+  const originalMediaOpacity = ticketImageExpandProgress.interpolate({
+    inputRange: [0, 0.7],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+  const expandedMediaOpacity = ticketImageExpandProgress.interpolate({
+    inputRange: [0.82, 1],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+  const ticketInfoMinHeight = ticketImageExpandProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [136, 166],
+    extrapolate: "clamp",
+  });
+  const ticketInfoPaddingTop = ticketImageExpandProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [12, 16],
+    extrapolate: "clamp",
+  });
+  const ticketImageTransitionOverlayStyle = ticketImageTransition
+    ? {
+        height: ticketImageExpandProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [
+            ticketImageTransition.fromFrame.height,
+            ticketImageTransition.toFrame.height,
+          ],
+          extrapolate: "clamp",
+        }),
+        left: ticketImageExpandProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [
+            ticketImageTransition.fromFrame.left,
+            ticketImageTransition.toFrame.left,
+          ],
+          extrapolate: "clamp",
+        }),
+        opacity: ticketImageTransition.toExpanded
+          ? ticketImageExpandProgress.interpolate({
+              inputRange: [0, 0.05, 0.92, 1],
+              outputRange: [1, 1, 1, 0],
+              extrapolate: "clamp",
+            })
+          : ticketImageExpandProgress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 1],
+              extrapolate: "clamp",
+            }),
+        top: ticketImageExpandProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [
+            ticketImageTransition.fromFrame.top,
+            ticketImageTransition.toFrame.top,
+          ],
+          extrapolate: "clamp",
+        }),
+        width: ticketImageExpandProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [
+            ticketImageTransition.fromFrame.width,
+            ticketImageTransition.toFrame.width,
+          ],
+          extrapolate: "clamp",
+        }),
+      }
+    : null;
 
   return (
     <View style={styles.experience}>
@@ -795,36 +1213,90 @@ export default function ProfileExperienceCard({
           style={styles.ticketMask}
         >
           <View onLayout={handleTicketLayout} style={styles.ticketBody}>
-            <Animated.View style={[styles.ticketHero, { height: currentHeroHeight }]}>
+            <Animated.View style={[styles.ticketHero, { height: ticketHeroHeight }]}>
               <View style={styles.ticketMediaLayer}>
                 {photoRefs.length > 0 ? (
                   <View style={styles.mediaArea}>
-                    {isTicketImageExpanded ? (
-                      <ProfileExperienceFullImageView
-                        activeIndex={activePhotoIndex}
-                        eventTitle={event.title}
-                        height={currentHeroHeight}
-                        onOpenImage={() => null}
-                        onPhotoRailGestureActiveChange={onPhotoRailGestureActiveChange}
-                        onSelectIndex={handlePhotoIndexSelect}
-                        photoRefs={photoRefs}
-                      />
-                    ) : mediaMode === "grid" ? (
-                      <ProfileExperiencePhotoGrid
-                        eventTitle={event.title}
-                        onOpenImage={handleOpenExpandedImage}
-                        photoRefs={photoRefs}
-                      />
-                    ) : (
-                      <ProfileExperienceFullImageView
-                        activeIndex={activePhotoIndex}
-                        eventTitle={event.title}
-                        height={EXPERIENCE_TICKET_MEDIA_HEIGHT}
-                        onOpenImage={handleOpenExpandedImage}
-                        onPhotoRailGestureActiveChange={onPhotoRailGestureActiveChange}
-                        onSelectIndex={handlePhotoIndexSelect}
-                        photoRefs={photoRefs}
-                      />
+                    <Animated.View
+                      pointerEvents={
+                        !isTicketImageExpanded && !isTicketImageTransitioning
+                          ? "auto"
+                          : "none"
+                      }
+                      style={[
+                        styles.mediaModeSurface,
+                        {
+                          opacity: originalMediaOpacity,
+                        },
+                      ]}
+                    >
+                      {mediaMode === "grid" ? (
+                        <ProfileExperiencePhotoGrid
+                          eventTitle={event.title}
+                          hiddenPhotoIndex={transitionPhotoIndex}
+                          onOpenImage={handleOpenExpandedImage}
+                          onPhotoLayout={recordGridPhotoLayout}
+                          photoRefs={photoRefs}
+                        />
+                      ) : (
+                        <ProfileExperienceFullImageView
+                          activeIndex={activePhotoIndex}
+                          eventTitle={event.title}
+                          height="100%"
+                          hiddenPhotoIndex={transitionPhotoIndex}
+                          onOpenImage={handleOpenExpandedImage}
+                          onPhotoLayout={recordImagePhotoLayout}
+                          onPhotoRailGestureActiveChange={onPhotoRailGestureActiveChange}
+                          onSelectIndex={handlePhotoIndexSelect}
+                          photoRefs={photoRefs}
+                        />
+                      )}
+                    </Animated.View>
+
+                    {(isTicketImageExpanded || isTicketImageTransitioning) && (
+                      <Animated.View
+                        pointerEvents={
+                          isTicketImageExpanded &&
+                          !isTicketImageTransitioning &&
+                          !isTicketImageCollapsing
+                            ? "auto"
+                            : "none"
+                        }
+                        style={[
+                          styles.mediaModeSurface,
+                          {
+                            opacity: expandedMediaOpacity,
+                          },
+                        ]}
+                      >
+                        <ProfileExperienceFullImageView
+                          activeIndex={activePhotoIndex}
+                          eventTitle={event.title}
+                          height="100%"
+                          hiddenPhotoIndex={transitionPhotoIndex}
+                          onOpenImage={() => null}
+                          onPhotoLayout={recordImagePhotoLayout}
+                          onPhotoRailGestureActiveChange={onPhotoRailGestureActiveChange}
+                          onSelectIndex={handlePhotoIndexSelect}
+                          photoRefs={photoRefs}
+                        />
+                      </Animated.View>
+                    )}
+
+                    {ticketImageTransition && ticketImageTransitionOverlayStyle && (
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.ticketImageTransitionOverlay,
+                          ticketImageTransitionOverlayStyle,
+                        ]}
+                      >
+                        <Image
+                          resizeMode="cover"
+                          source={ticketImageTransition.source}
+                          style={styles.ticketImageTransitionPhoto}
+                        />
+                      </Animated.View>
                     )}
                   </View>
                 ) : (
@@ -938,147 +1410,156 @@ export default function ProfileExperienceCard({
               <View style={styles.ticketSeparatorLine} />
             </View>
 
-            <Pressable
-              accessibilityLabel={`Open details for ${event.title}`}
-              accessibilityRole="button"
-              onPress={isTicketImageExpanded ? undefined : handleOpenPress}
-              style={({ pressed }) => [
+            <Animated.View
+              style={[
                 styles.ticketInfoSection,
-                isTicketImageExpanded && styles.ticketInfoSectionExpanded,
-                pressed && styles.cardPressed,
+                {
+                  minHeight: ticketInfoMinHeight,
+                  paddingTop: ticketInfoPaddingTop,
+                },
               ]}
             >
-              <Animated.View
-                pointerEvents={isTicketImageExpanded ? "none" : "auto"}
-                style={[
-                  styles.ticketInfoContent,
-                  {
-                    opacity: ticketImageExpandProgress.interpolate({
-                      inputRange: [0, 0.45],
-                      outputRange: [1, 0],
-                      extrapolate: "clamp",
-                    }),
-                    transform: [
-                      {
-                        translateY: ticketImageExpandProgress.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0, 10],
-                        }),
-                      },
-                    ],
-                  },
+              <Pressable
+                accessibilityLabel={`Open details for ${event.title}`}
+                accessibilityRole="button"
+                onPress={isTicketImageExpanded ? undefined : handleOpenPress}
+                style={({ pressed }) => [
+                  styles.ticketInfoPressable,
+                  pressed && styles.cardPressed,
                 ]}
               >
-                <View style={styles.ticketInfoTextColumn}>
-                  <Text style={styles.date}>
-                    {formatAttendedExperienceDate(experience.attendedAt)}
+                <Animated.View
+                  pointerEvents={isTicketImageExpanded ? "none" : "auto"}
+                  style={[
+                    styles.ticketInfoContent,
+                    {
+                      opacity: ticketImageExpandProgress.interpolate({
+                        inputRange: [0, 0.45],
+                        outputRange: [1, 0],
+                        extrapolate: "clamp",
+                      }),
+                      transform: [
+                        {
+                          translateY: ticketImageExpandProgress.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, 10],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <View style={styles.ticketInfoTextColumn}>
+                    <Text style={styles.date}>
+                      {formatAttendedExperienceDate(experience.attendedAt)}
+                    </Text>
+
+                    {!!price && <Text style={styles.price}>{price}</Text>}
+
+                    <Text numberOfLines={2} style={styles.address}>
+                      {event.locationName}
+                    </Text>
+                  </View>
+
+                  <View style={styles.ticketActionColumn}>
+                    <Pressable
+                      accessibilityLabel={`Open details for ${event.title}`}
+                      accessibilityRole="button"
+                      onPress={(pressEvent) => {
+                        pressEvent?.stopPropagation?.();
+                        if (!isTicketImageExpanded) {
+                          handleOpenPress();
+                        }
+                      }}
+                      style={({ pressed }) => [
+                        styles.posterArrowButton,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <View pointerEvents="none" style={styles.posterArrowButtonSurface}>
+                        <LinearGradient
+                          colors={[
+                            colors.primary,
+                            "#55F777",
+                            "#DFFFF0",
+                            "#68FF86",
+                            colors.primary,
+                            "#16C947",
+                          ]}
+                          locations={[0, 0.2, 0.38, 0.5, 0.72, 1]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={StyleSheet.absoluteFillObject}
+                        />
+
+                        <LinearGradient
+                          colors={[
+                            "rgba(255, 255, 255, 0)",
+                            "rgba(255, 255, 255, 0.42)",
+                            "rgba(255, 255, 255, 0)",
+                          ]}
+                          locations={[0, 0.5, 1]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={styles.posterArrowButtonSheen}
+                        />
+
+                        <LinearGradient
+                          colors={[
+                            "rgba(255, 255, 255, 0.32)",
+                            "rgba(255, 255, 255, 0.06)",
+                            "rgba(255, 255, 255, 0)",
+                          ]}
+                          locations={[0, 0.42, 1]}
+                          style={styles.posterArrowButtonTopGlow}
+                        />
+                      </View>
+
+                      <Ionicons
+                        name="arrow-forward"
+                        size={34}
+                        color={TICKET_DARK}
+                        style={styles.posterArrowIcon}
+                      />
+                    </Pressable>
+                  </View>
+                </Animated.View>
+
+                <Animated.View
+                  pointerEvents={isTicketImageExpanded ? "auto" : "none"}
+                  style={[
+                    styles.expandedTicketIdentity,
+                    {
+                      opacity: ticketImageExpandProgress.interpolate({
+                        inputRange: [0.35, 1],
+                        outputRange: [0, 1],
+                        extrapolate: "clamp",
+                      }),
+                      transform: [
+                        {
+                          translateY: ticketImageExpandProgress.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-24, 0],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <Text style={styles.expandedTicketLabel}>MEMORY TICKET</Text>
+
+                  <Text numberOfLines={3} style={styles.expandedTicketTitle}>
+                    {event.title}
                   </Text>
 
-                  {!!price && <Text style={styles.price}>{price}</Text>}
-
-                  <Text numberOfLines={2} style={styles.address}>
-                    {event.locationName}
-                  </Text>
-                </View>
-
-                <View style={styles.ticketActionColumn}>
-                  <Pressable
-                    accessibilityLabel={`Open details for ${event.title}`}
-                    accessibilityRole="button"
-                    onPress={(pressEvent) => {
-                      pressEvent?.stopPropagation?.();
-                      if (!isTicketImageExpanded) {
-                        handleOpenPress();
-                      }
-                    }}
-                    style={({ pressed }) => [
-                      styles.posterArrowButton,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <View pointerEvents="none" style={styles.posterArrowButtonSurface}>
-                      <LinearGradient
-                        colors={[
-                          colors.primary,
-                          "#55F777",
-                          "#DFFFF0",
-                          "#68FF86",
-                          colors.primary,
-                          "#16C947",
-                        ]}
-                        locations={[0, 0.2, 0.38, 0.5, 0.72, 1]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={StyleSheet.absoluteFillObject}
-                      />
-
-                      <LinearGradient
-                        colors={[
-                          "rgba(255, 255, 255, 0)",
-                          "rgba(255, 255, 255, 0.42)",
-                          "rgba(255, 255, 255, 0)",
-                        ]}
-                        locations={[0, 0.5, 1]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.posterArrowButtonSheen}
-                      />
-
-                      <LinearGradient
-                        colors={[
-                          "rgba(255, 255, 255, 0.32)",
-                          "rgba(255, 255, 255, 0.06)",
-                          "rgba(255, 255, 255, 0)",
-                        ]}
-                        locations={[0, 0.42, 1]}
-                        style={styles.posterArrowButtonTopGlow}
-                      />
-                    </View>
-
-                    <Ionicons
-                      name="arrow-forward"
-                      size={34}
-                      color={TICKET_DARK}
-                      style={styles.posterArrowIcon}
-                    />
-                  </Pressable>
-                </View>
-              </Animated.View>
-
-              <Animated.View
-                pointerEvents={isTicketImageExpanded ? "auto" : "none"}
-                style={[
-                  styles.expandedTicketIdentity,
-                  {
-                    opacity: ticketImageExpandProgress.interpolate({
-                      inputRange: [0.35, 1],
-                      outputRange: [0, 1],
-                      extrapolate: "clamp",
-                    }),
-                    transform: [
-                      {
-                        translateY: ticketImageExpandProgress.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-24, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <Text style={styles.expandedTicketLabel}>MEMORY TICKET</Text>
-
-                <Text numberOfLines={3} style={styles.expandedTicketTitle}>
-                  {event.title}
-                </Text>
-
-                {!!organizerName && (
-                  <Text numberOfLines={1} style={styles.expandedTicketOrganizer}>
-                    {organizerName}
-                  </Text>
-                )}
-              </Animated.View>
-            </Pressable>
+                  {!!organizerName && (
+                    <Text numberOfLines={1} style={styles.expandedTicketOrganizer}>
+                      {organizerName}
+                    </Text>
+                  )}
+                </Animated.View>
+              </Pressable>
+            </Animated.View>
 
             <View pointerEvents="none" style={styles.ticketInnerHighlightFrame} />
             <LinearGradient
@@ -1149,7 +1630,6 @@ export default function ProfileExperienceCard({
           </View>
         </MaskedView>
       </View>
-
     </View>
   );
 }
@@ -1323,14 +1803,14 @@ const styles = StyleSheet.create({
   ticketInfoSection: {
     backgroundColor: TICKET_DARK,
     minHeight: 136,
-    paddingBottom: EXPERIENCE_TICKET_INFO_PADDING + 20,
-    paddingHorizontal: EXPERIENCE_TICKET_INFO_PADDING,
     paddingTop: 12,
     position: "relative",
   },
-  ticketInfoSectionExpanded: {
-    minHeight: 166,
-    paddingTop: 16,
+  ticketInfoPressable: {
+    flex: 1,
+    paddingBottom: EXPERIENCE_TICKET_INFO_PADDING + 20,
+    paddingHorizontal: EXPERIENCE_TICKET_INFO_PADDING,
+    position: "relative",
   },
   ticketInfoContent: {
     alignItems: "flex-end",
@@ -1342,7 +1822,7 @@ const styles = StyleSheet.create({
     left: EXPERIENCE_TICKET_INFO_PADDING,
     position: "absolute",
     right: EXPERIENCE_TICKET_INFO_PADDING,
-    top: 16,
+    top: 0,
   },
   expandedTicketLabel: {
     color: "rgba(255, 255, 255, 0.78)",
@@ -1398,6 +1878,9 @@ const styles = StyleSheet.create({
   photoGridImage: {
     height: "100%",
     width: "100%",
+  },
+  photoHiddenDuringTransition: {
+    opacity: 0,
   },
   fullPhotoView: {
     backgroundColor: TICKET_DARK,
@@ -1481,6 +1964,19 @@ const styles = StyleSheet.create({
     height: "100%",
     overflow: "hidden",
     position: "relative",
+    width: "100%",
+  },
+  mediaModeSurface: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  ticketImageTransitionOverlay: {
+    backgroundColor: TICKET_DARK,
+    overflow: "hidden",
+    position: "absolute",
+    zIndex: 7,
+  },
+  ticketImageTransitionPhoto: {
+    height: "100%",
     width: "100%",
   },
   date: {

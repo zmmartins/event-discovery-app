@@ -47,7 +47,7 @@ const PROFILE_VIEWS = [
 const USERNAME_NOTCH_HEIGHT = 38;
 const USERNAME_NOTCH_GAP = 10;
 const PROFILE_TONGUE_TOP_GAP = 8;
-const SHEET_COLLAPSED_SUMMARY_EXTRA_PADDING = 56;
+const SHEET_COLLAPSED_SUMMARY_EXTRA_PADDING = 60;
 const SHEET_COLLAPSED_FALLBACK_VISIBLE_HEIGHT = 220;
 const BOTTOM_NAV_COLLAPSED_OVERLAP = 18;
 const SHEET_CORNER_RADIUS = 34;
@@ -112,21 +112,29 @@ function ProfileSummary({ onLayout, profile }) {
 
   return (
     <View onLayout={onLayout} style={styles.summary}>
-      <View style={styles.nameBlock}>
-        <View style={styles.profileNameStack}>
-          {safeDisplayNameParts.map((namePart, index) => (
-            <Text key={`${namePart}-${index}`} style={styles.profileNameLine}>
-              {namePart}
-            </Text>
-          ))}
+      <View style={styles.summaryTopRow}>
+        <View style={styles.nameBlock}>
+          <View style={styles.profileNameStack}>
+            {safeDisplayNameParts.map((namePart, index) => (
+              <Text key={`${namePart}-${index}`} style={styles.profileNameLine}>
+                {namePart}
+              </Text>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.statsStack}>
+          <Stat label="Friends" value={profile.stats.friends} />
+          <Stat label="Attended" value={profile.stats.attendedEvents} />
+          <Stat label="Unique" value={profile.stats.uniqueExperiences} />
         </View>
       </View>
 
-      <View style={styles.statsRow}>
-        <Stat label="Friends" value={profile.stats.friends} />
-        <Stat label="Attended" value={profile.stats.attendedEvents} />
-        <Stat label="Unique" value={profile.stats.uniqueExperiences} />
-      </View>
+      {!!profile.description && (
+        <Text numberOfLines={3} style={styles.profileDescription}>
+          {profile.description}
+        </Text>
+      )}
     </View>
   );
 }
@@ -1013,58 +1021,80 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   summary: {
-    gap: 12,
+    gap: 25,
+  },
+  summaryTopRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 18,
+    justifyContent: "space-between",
   },
   nameBlock: {
-    alignSelf: "stretch",
+    flex: 1,
     minWidth: 0,
     paddingHorizontal: 2,
   },
   profileNameStack: {
     alignItems: "flex-start",
     alignSelf: "stretch",
-    marginTop: 8,
+    marginTop: 6,
     paddingLeft: PROFILE_NAME_LEFT_INSET,
   },
   profileNameLine: {
     color: colors.text,
     fontSize: 34,
-    fontWeight: "900",
+    fontWeight: "700",
     letterSpacing: 0,
-    lineHeight: 35,
+    lineHeight: 34,
     textAlign: "left",
   },
-  statsRow: {
+  statsStack: {
     alignItems: "flex-start",
-    flexDirection: "row",
-    justifyContent: "space-between",
+    alignSelf: "flex-start",
+    gap: 0,
+    marginTop: 10,
+    minWidth: 110,
+    paddingRight: 4,
   },
   stat: {
-    alignItems: "center",
-    flex: 1,
-    justifyContent: "center",
-    minHeight: 54,
+    alignItems: "baseline",
+    flexDirection: "row",
+    gap: 7,
+    justifyContent: "flex-start",
+    minHeight: 19,
+    width: "100%",
   },
   statValue: {
     color: colors.text,
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: "900",
-    lineHeight: 26,
-    textAlign: "center",
+    lineHeight: 22,
+    minWidth: 24,
+    textAlign: "right",
   },
   statLabel: {
     color: colors.secondaryText,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: "800",
-    letterSpacing: 0,
-    marginTop: 2,
-    textAlign: "center",
+    letterSpacing: 0.4,
+    lineHeight: 11,
+    textAlign: "left",
+    textTransform: "uppercase",
+  },
+  profileDescription: {
+    color: colors.secondaryText,
+    fontSize: 13,
+    fontWeight: "500",
+    lineHeight: 18,
+    marginTop: 0,
+    paddingLeft: PROFILE_NAME_LEFT_INSET + 2,
+    paddingRight: 28,
   },
   sectionTabs: {
     borderBottomColor: "rgba(14, 30, 22, 0.12)",
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
-    marginTop: 32,
+    marginTop: 26,
   },
   sectionTab: {
     alignItems: "center",
