@@ -44,7 +44,9 @@ const PROFILE_VIEWS = [
   { icon: "list", label: "List", value: "list" },
   { icon: "map", label: "Map", value: "map" },
 ];
-const SHEET_EXPANDED_TOP_OFFSET = 84;
+const USERNAME_NOTCH_HEIGHT = 38;
+const USERNAME_NOTCH_GAP = 10;
+const PROFILE_TONGUE_TOP_GAP = 8;
 const SHEET_COLLAPSED_SUMMARY_EXTRA_PADDING = 56;
 const SHEET_COLLAPSED_FALLBACK_VISIBLE_HEIGHT = 220;
 const BOTTOM_NAV_COLLAPSED_OVERLAP = 18;
@@ -53,9 +55,12 @@ const SHEET_SCREEN_MARGIN = 10;
 const SHEET_TOP_EXTENSION = 80;
 const SHEET_HORIZONTAL_PADDING = 22;
 const BOTTOM_NAV_RESERVED_HEIGHT = 122;
+const PROFILE_MAP_BOTTOM_NAV_HEIGHT = 64;
+const PROFILE_MAP_BOTTOM_GAP = 8;
 const SHEET_EXTRA_BOTTOM_PADDING = 180;
 const PROFILE_COLUMN_GAP = 12;
 const PROFILE_ITEM_GAP = 22;
+const PROFILE_NAME_LEFT_INSET = 8;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -98,15 +103,23 @@ function Stat({ label, value }) {
 }
 
 function ProfileSummary({ onLayout, profile }) {
+  const displayNameParts = String(profile.name ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const safeDisplayNameParts =
+    displayNameParts.length > 0 ? displayNameParts : [profile.username].filter(Boolean);
+
   return (
     <View onLayout={onLayout} style={styles.summary}>
       <View style={styles.nameBlock}>
-        <Text numberOfLines={1} style={styles.username}>
-          @{profile.username}
-        </Text>
-        <Text numberOfLines={2} style={styles.name}>
-          {profile.name}
-        </Text>
+        <View style={styles.profileNameStack}>
+          {safeDisplayNameParts.map((namePart, index) => (
+            <Text key={`${namePart}-${index}`} style={styles.profileNameLine}>
+              {namePart}
+            </Text>
+          ))}
+        </View>
       </View>
 
       <View style={styles.statsRow}>
@@ -251,9 +264,9 @@ function MasonryEventList({
   );
 }
 
-function ProfileEventMapView({ onPinPress, pins, profileRegion }) {
+function ProfileEventMapView({ onPinPress, pins, profileRegion, style }) {
   return (
-    <View style={styles.mapPanel}>
+    <View style={[styles.mapPanel, style]}>
       <MapView
         customMapStyle={APP_MAP_STYLE}
         initialRegion={profileRegion}
@@ -298,7 +311,9 @@ export default function ProfileScreen() {
   const pathname = usePathname();
   const router = useRouter();
   const { height: screenHeight, width: screenWidth } = useWindowDimensions();
-  const expandedTop = insets.top + SHEET_EXPANDED_TOP_OFFSET;
+  const expandedTongueTop =
+    insets.top + USERNAME_NOTCH_HEIGHT + USERNAME_NOTCH_GAP + PROFILE_TONGUE_TOP_GAP;
+  const expandedTop = expandedTongueTop + SHEET_TOP_EXTENSION;
   const [summaryHeight, setSummaryHeight] = useState(0);
   const collapsedVisibleHeight =
     (summaryHeight || SHEET_COLLAPSED_FALLBACK_VISIBLE_HEIGHT) +
@@ -335,6 +350,12 @@ export default function ProfileScreen() {
   const previousCollapsedTop = useRef(collapsedTop);
 
   const activeView = activeViews[activeSection] ?? "list";
+  const isMapViewActive = activeView === "map";
+  const usernameLabel = useMemo(() => {
+    if (!profile?.username) return "";
+
+    return profile.username.startsWith("@") ? profile.username : `@${profile.username}`;
+  }, [profile?.username]);
   const sheetBodyOpacity = useMemo(() => {
     const fullyVisiblePoint = collapsedTop - 140;
     const hiddenPoint = collapsedTop - 24;
@@ -382,23 +403,35 @@ export default function ProfileScreen() {
     isSheetScrollEnabledRef.current = isSheetScrollEnabled;
   }, [isSheetScrollEnabled]);
 
-  const handlePhotoRailGestureActiveChange = useCallback((isActive) => {
-    isPhotoRailGestureActiveRef.current = isActive;
+  const handlePhotoRailGestureActiveChange = useCallback(
+    (isActive) => {
+      isPhotoRailGestureActiveRef.current = isActive;
 
-    setIsPhotoRailGestureActive((currentValue) =>
-      currentValue === isActive ? currentValue : isActive
-    );
+      setIsPhotoRailGestureActive((currentValue) =>
+        currentValue === isActive ? currentValue : isActive
+      );
 
-    scrollViewRef.current?.setNativeProps?.({
-      scrollEnabled: isActive ? false : isSheetScrollEnabledRef.current,
-    });
-  }, []);
+      scrollViewRef.current?.setNativeProps?.({
+        scrollEnabled: isActive
+          ? false
+          : isSheetScrollEnabledRef.current && !isMapViewActive,
+      });
+    },
+    [isMapViewActive]
+  );
 
   useEffect(() => {
     scrollViewRef.current?.setNativeProps?.({
-      scrollEnabled: isSheetScrollEnabled && !isPhotoRailGestureActive,
+      scrollEnabled:
+        isSheetScrollEnabled && !isPhotoRailGestureActive && !isMapViewActive,
     });
-  }, [isPhotoRailGestureActive, isSheetScrollEnabled]);
+  }, [isMapViewActive, isPhotoRailGestureActive, isSheetScrollEnabled]);
+
+  useEffect(() => {
+    if (isMapViewActive) {
+      scrollOffsetY.current = 0;
+    }
+  }, [isMapViewActive]);
 
   useFocusEffect(
     useCallback(() => {
@@ -748,6 +781,38 @@ export default function ProfileScreen() {
     );
   }
 
+  function renderSheetBodyContent() {
+    return (
+      <>
+        <ProfileSummary onLayout={handleSummaryLayout} profile={profile} />
+        <Animated.View
+          pointerEvents={isSheetScrollEnabled ? "auto" : "none"}
+          style={[
+            styles.sheetBody,
+            {
+              opacity: sheetBodyOpacity,
+              transform: [{ translateY: sheetBodyTranslateY }],
+            },
+          ]}
+        >
+          <ProfileSectionTabs
+            activeSection={activeSection}
+            onChange={handleSectionChange}
+            profile={profile}
+          />
+          <ProfileViewSelector activeView={activeView} onChange={handleViewChange} />
+          <View
+            style={
+              isMapViewActive ? styles.profileContentBody : styles.profileListContentBody
+            }
+          >
+            {renderActiveSectionContent()}
+          </View>
+        </Animated.View>
+      </>
+    );
+  }
+
   if (!profile) {
     return (
       <View style={styles.loadingContainer}>
@@ -764,6 +829,22 @@ export default function ProfileScreen() {
         style={styles.backgroundImage}
       />
       <View style={styles.backgroundOverlay} />
+
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.usernameNotchWrap,
+          {
+            top: insets.top + 8,
+          },
+        ]}
+      >
+        <View style={styles.usernameNotch}>
+          <Text numberOfLines={1} style={styles.usernameNotchText}>
+            {usernameLabel}
+          </Text>
+        </View>
+      </View>
 
       {!isSheetExpanded && (
         <View
@@ -794,45 +875,43 @@ export default function ProfileScreen() {
         <BlurView intensity={32} style={StyleSheet.absoluteFill} tint="light" />
         <View pointerEvents="none" style={styles.sheetTint} />
 
-        <ScrollView
-          contentContainerStyle={[
-            styles.sheetContent,
-            {
-              paddingBottom:
-                Math.max(insets.bottom, 12) +
-                BOTTOM_NAV_RESERVED_HEIGHT +
-                SHEET_EXTRA_BOTTOM_PADDING,
-            },
-          ]}
-          onScroll={(event) => {
-            scrollOffsetY.current = event.nativeEvent.contentOffset.y;
-          }}
-          ref={scrollViewRef}
-          scrollEnabled={isSheetScrollEnabled && !isPhotoRailGestureActive}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={false}
-          style={styles.sheetScroller}
-        >
-          <ProfileSummary onLayout={handleSummaryLayout} profile={profile} />
-          <Animated.View
-            pointerEvents={isSheetScrollEnabled ? "auto" : "none"}
+        {isMapViewActive ? (
+          <View
             style={[
-              styles.sheetBody,
+              styles.sheetStaticContent,
               {
-                opacity: sheetBodyOpacity,
-                transform: [{ translateY: sheetBodyTranslateY }],
+                paddingBottom:
+                  Math.max(insets.bottom, 12) +
+                  PROFILE_MAP_BOTTOM_NAV_HEIGHT +
+                  PROFILE_MAP_BOTTOM_GAP,
               },
             ]}
           >
-            <ProfileSectionTabs
-              activeSection={activeSection}
-              onChange={handleSectionChange}
-              profile={profile}
-            />
-            <ProfileViewSelector activeView={activeView} onChange={handleViewChange} />
-            {renderActiveSectionContent()}
-          </Animated.View>
-        </ScrollView>
+            {renderSheetBodyContent()}
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={[
+              styles.sheetContent,
+              {
+                paddingBottom:
+                  Math.max(insets.bottom, 12) +
+                  BOTTOM_NAV_RESERVED_HEIGHT +
+                  SHEET_EXTRA_BOTTOM_PADDING,
+              },
+            ]}
+            onScroll={(event) => {
+              scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+            }}
+            ref={scrollViewRef}
+            scrollEnabled={isSheetScrollEnabled && !isPhotoRailGestureActive}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            style={styles.sheetScroller}
+          >
+            {renderSheetBodyContent()}
+          </ScrollView>
+        )}
       </Animated.View>
     </View>
   );
@@ -866,6 +945,36 @@ const styles = StyleSheet.create({
     top: 0,
     zIndex: 1,
   },
+  usernameNotchWrap: {
+    alignItems: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    zIndex: 50,
+  },
+  usernameNotch: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.62)",
+    borderColor: "rgba(255, 255, 255, 0.76)",
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: USERNAME_NOTCH_HEIGHT,
+    paddingHorizontal: 18,
+    shadowColor: "#000000",
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+  },
+  usernameNotchText: {
+    color: colors.effects.textSubtle,
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0,
+  },
   sheet: {
     borderColor: "rgba(255, 255, 255, 0.68)",
     borderRadius: SHEET_CORNER_RADIUS,
@@ -893,32 +1002,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: SHEET_HORIZONTAL_PADDING,
     paddingTop: 20,
   },
+  sheetStaticContent: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: SHEET_HORIZONTAL_PADDING,
+    paddingTop: 20,
+  },
   sheetBody: {
     flex: 1,
+    minHeight: 0,
   },
   summary: {
     gap: 12,
   },
   nameBlock: {
+    alignSelf: "stretch",
     minWidth: 0,
     paddingHorizontal: 2,
   },
-  name: {
+  profileNameStack: {
+    alignItems: "flex-start",
+    alignSelf: "stretch",
+    marginTop: 8,
+    paddingLeft: PROFILE_NAME_LEFT_INSET,
+  },
+  profileNameLine: {
     color: colors.text,
-    fontSize: 29,
+    fontSize: 34,
     fontWeight: "900",
     letterSpacing: 0,
-    lineHeight: 32,
-    textAlign: "center",
-  },
-  username: {
-    alignSelf: "center",
-    color: colors.secondaryText,
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 0,
-    marginBottom: 6,
-    textAlign: "center",
+    lineHeight: 35,
+    textAlign: "left",
   },
   statsRow: {
     alignItems: "flex-start",
@@ -1028,6 +1142,14 @@ const styles = StyleSheet.create({
     gap: 24,
     marginTop: 18,
   },
+  profileContentBody: {
+    flex: 1,
+    minHeight: 0,
+    width: "100%",
+  },
+  profileListContentBody: {
+    width: "100%",
+  },
   masonryRow: {
     flexDirection: "row",
     gap: PROFILE_COLUMN_GAP,
@@ -1040,9 +1162,11 @@ const styles = StyleSheet.create({
     borderColor: colors.effects.surfaceStrongBorder,
     borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
-    height: 430,
-    marginTop: 18,
+    flex: 1,
+    marginTop: 12,
+    minHeight: 0,
     overflow: "hidden",
+    width: "100%",
   },
   map: {
     flex: 1,

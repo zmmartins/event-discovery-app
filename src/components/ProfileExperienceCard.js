@@ -1015,7 +1015,51 @@ export default function ProfileExperienceCard({
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Ionicons name="arrow-forward" size={34} color={TICKET_DARK} />
+                    <View pointerEvents="none" style={styles.posterArrowButtonSurface}>
+                      <LinearGradient
+                        colors={[
+                          colors.primary,
+                          "#55F777",
+                          "#DFFFF0",
+                          "#68FF86",
+                          colors.primary,
+                          "#16C947",
+                        ]}
+                        locations={[0, 0.2, 0.38, 0.5, 0.72, 1]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={StyleSheet.absoluteFillObject}
+                      />
+
+                      <LinearGradient
+                        colors={[
+                          "rgba(255, 255, 255, 0)",
+                          "rgba(255, 255, 255, 0.42)",
+                          "rgba(255, 255, 255, 0)",
+                        ]}
+                        locations={[0, 0.5, 1]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.posterArrowButtonSheen}
+                      />
+
+                      <LinearGradient
+                        colors={[
+                          "rgba(255, 255, 255, 0.32)",
+                          "rgba(255, 255, 255, 0.06)",
+                          "rgba(255, 255, 255, 0)",
+                        ]}
+                        locations={[0, 0.42, 1]}
+                        style={styles.posterArrowButtonTopGlow}
+                      />
+                    </View>
+
+                    <Ionicons
+                      name="arrow-forward"
+                      size={34}
+                      color={TICKET_DARK}
+                      style={styles.posterArrowIcon}
+                    />
                   </Pressable>
                 </View>
               </View>
@@ -1037,6 +1081,19 @@ export default function ProfileExperienceCard({
               locations={[0.45, 1]}
               pointerEvents="none"
               style={styles.ticketInnerBottomShade}
+            />
+            <LinearGradient
+              colors={[
+                "rgba(255, 255, 255, 0)",
+                "rgba(255, 255, 255, 0.085)",
+                "rgba(255, 255, 255, 0.025)",
+                "rgba(255, 255, 255, 0)",
+              ]}
+              locations={[0, 0.42, 0.52, 1]}
+              pointerEvents="none"
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.ticketMaterialSheen}
             />
             <LinearGradient
               colors={[
@@ -1167,7 +1224,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     marginTop: 8,
-    maxWidth: "92%",
+    width: "100%",
   },
   ticketOrganizerName: {
     color: "rgba(255, 255, 255, 0.88)",
@@ -1175,6 +1232,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     letterSpacing: 0,
+    textAlign: "right",
   },
   ticketSeparatorRow: {
     backgroundColor: TICKET_DARK,
@@ -1213,6 +1271,16 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
     zIndex: 19,
+  },
+  ticketMaterialSheen: {
+    height: 150,
+    left: -70,
+    opacity: 0.55,
+    position: "absolute",
+    right: -70,
+    top: 40,
+    transform: [{ rotate: "-12deg" }],
+    zIndex: 18,
   },
   ticketTopInsetHighlight: {
     height: 26,
@@ -1467,6 +1535,8 @@ const styles = StyleSheet.create({
     borderRadius: 31,
     height: 62,
     justifyContent: "center",
+    overflow: "visible",
+    position: "relative",
     shadowColor: "#000000",
     shadowOffset: {
       width: 0,
@@ -1475,6 +1545,32 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 12,
     width: 62,
+  },
+  posterArrowButtonSurface: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 31,
+    overflow: "hidden",
+  },
+  posterArrowButtonSheen: {
+    height: 90,
+    left: -28,
+    opacity: 0.75,
+    position: "absolute",
+    top: -16,
+    transform: [{ rotate: "-12deg" }],
+    width: 42,
+  },
+  posterArrowButtonTopGlow: {
+    height: 28,
+    left: 0,
+    opacity: 0.65,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  posterArrowIcon: {
+    position: "relative",
+    zIndex: 2,
   },
   pressed: {
     opacity: 0.72,
