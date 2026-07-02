@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -19,10 +19,17 @@ import {
   finishInteractionTask,
   getInteractionAnalytics,
   getInteractionContext,
+  setInteractionContext,
   shareInteractionExport,
   startInteractionTask,
 } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
+
+const DEFAULT_SESSION_INPUTS = {
+  participantId: "P01",
+  sessionLabel: "pilot-1",
+  testPlanId: "ami-lab3",
+};
 
 const TASK_PRESETS = [
   "task-map-find-event",
@@ -48,6 +55,24 @@ function getCountEntries(counts = {}, limit = 6) {
   return Object.entries(counts)
     .sort((first, second) => second[1] - first[1])
     .slice(0, limit);
+}
+
+function normalizeSessionInputs(values) {
+  return {
+    participantId:
+      values?.participantId?.trim() || DEFAULT_SESSION_INPUTS.participantId,
+    sessionLabel:
+      values?.sessionLabel?.trim() || DEFAULT_SESSION_INPUTS.sessionLabel,
+    testPlanId: values?.testPlanId?.trim() || DEFAULT_SESSION_INPUTS.testPlanId,
+  };
+}
+
+function sessionInputsMatch(first, second) {
+  return (
+    first?.participantId === second?.participantId &&
+    first?.sessionLabel === second?.sessionLabel &&
+    first?.testPlanId === second?.testPlanId
+  );
 }
 
 function Metric({ label, value }) {
@@ -123,14 +148,56 @@ export default function NotificationsScreen() {
   const [context, setContext] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isBusy, setIsBusy] = useState(false);
-  const [participantId, setParticipantId] = useState("P01");
-  const [sessionLabel, setSessionLabel] = useState("pilot-1");
+  const [participantId, setParticipantId] = useState(
+    DEFAULT_SESSION_INPUTS.participantId,
+  );
+  const [sessionLabel, setSessionLabel] = useState(
+    DEFAULT_SESSION_INPUTS.sessionLabel,
+  );
   const [taskId, setTaskId] = useState(TASK_PRESETS[0]);
-  const [testPlanId, setTestPlanId] = useState("ami-lab3");
+  const [testPlanId, setTestPlanId] = useState(
+    DEFAULT_SESSION_INPUTS.testPlanId,
+  );
+  const hasHydratedFormRef = useRef(false);
+  const latestSessionInputsRef = useRef(DEFAULT_SESSION_INPUTS);
+  const lastPersistedSessionInputsRef = useRef(DEFAULT_SESSION_INPUTS);
 
   useInteractionLogger(LOG_ACTIONS.notificationsOpened, {
     screen: "NotificationsScreen",
   });
+
+  const hydrateSessionInputs = useCallback((nextContext = {}) => {
+    const nextInputs = normalizeSessionInputs({
+      participantId: nextContext.participantId,
+      sessionLabel: nextContext.sessionLabel,
+      testPlanId: nextContext.testPlanId,
+    });
+
+    latestSessionInputsRef.current = nextInputs;
+    lastPersistedSessionInputsRef.current = nextInputs;
+    hasHydratedFormRef.current = true;
+    setParticipantId(nextInputs.participantId);
+    setSessionLabel(nextInputs.sessionLabel);
+    setTestPlanId(nextInputs.testPlanId);
+  }, []);
+
+  const persistSessionInputs = useCallback(async () => {
+    if (!hasHydratedFormRef.current) return null;
+
+    const nextInputs = normalizeSessionInputs(latestSessionInputsRef.current);
+
+    if (
+      sessionInputsMatch(nextInputs, lastPersistedSessionInputsRef.current)
+    ) {
+      return null;
+    }
+
+    const nextContext = await setInteractionContext(nextInputs);
+    lastPersistedSessionInputsRef.current = nextInputs;
+    setContext(nextContext);
+
+    return nextContext;
+  }, []);
 
   const refreshAnalytics = useCallback(async () => {
     const [nextAnalytics, nextContext] = await Promise.all([
@@ -140,7 +207,8 @@ export default function NotificationsScreen() {
 
     setAnalytics(nextAnalytics);
     setContext(nextContext);
-  }, []);
+    hydrateSessionInputs(nextContext);
+  }, [hydrateSessionInputs]);
 
   const runAction = useCallback(
     async (action) => {
@@ -159,24 +227,63 @@ export default function NotificationsScreen() {
     [refreshAnalytics]
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      refreshAnalytics().catch((error) => {
+        setErrorMessage(error?.message ?? "Could not load logs");
+      });
+
+      return () => {
+        persistSessionInputs().catch(() => null);
+      };
+    }, [persistSessionInputs, refreshAnalytics]),
+  );
+
   useEffect(() => {
-    refreshAnalytics().catch((error) => {
-      setErrorMessage(error?.message ?? "Could not load logs");
-    });
-  }, [refreshAnalytics]);
+    if (!hasHydratedFormRef.current) return undefined;
+
+    const timeoutId = setTimeout(() => {
+      persistSessionInputs().catch(() => null);
+    }, 600);
+
+    return () => clearTimeout(timeoutId);
+  }, [participantId, persistSessionInputs, sessionLabel, testPlanId]);
 
   const summary = analytics?.summary;
   const activeTaskId = context?.taskId;
   const taskSummaries = summary?.taskSummaries ?? [];
   const lastTask = taskSummaries[taskSummaries.length - 1];
-  const handleBackPress = useCallback(() => {
+  const handleParticipantIdChange = useCallback((value) => {
+    latestSessionInputsRef.current = {
+      ...latestSessionInputsRef.current,
+      participantId: value,
+    };
+    setParticipantId(value);
+  }, []);
+  const handleSessionLabelChange = useCallback((value) => {
+    latestSessionInputsRef.current = {
+      ...latestSessionInputsRef.current,
+      sessionLabel: value,
+    };
+    setSessionLabel(value);
+  }, []);
+  const handleTestPlanIdChange = useCallback((value) => {
+    latestSessionInputsRef.current = {
+      ...latestSessionInputsRef.current,
+      testPlanId: value,
+    };
+    setTestPlanId(value);
+  }, []);
+  const handleBackPress = useCallback(async () => {
+    await persistSessionInputs().catch(() => null);
+
     if (router.canGoBack?.()) {
       router.back();
       return;
     }
 
     router.replace("/map");
-  }, [router]);
+  }, [persistSessionInputs, router]);
 
   return (
     <ScrollView
@@ -211,7 +318,7 @@ export default function NotificationsScreen() {
             <Text style={styles.inputLabel}>Participant</Text>
             <TextInput
               autoCapitalize="characters"
-              onChangeText={setParticipantId}
+              onChangeText={handleParticipantIdChange}
               placeholder="P01"
               placeholderTextColor={colors.secondaryText}
               style={styles.input}
@@ -222,7 +329,7 @@ export default function NotificationsScreen() {
             <Text style={styles.inputLabel}>Plan</Text>
             <TextInput
               autoCapitalize="none"
-              onChangeText={setTestPlanId}
+              onChangeText={handleTestPlanIdChange}
               placeholder="ami-lab3"
               placeholderTextColor={colors.secondaryText}
               style={styles.input}
@@ -234,7 +341,7 @@ export default function NotificationsScreen() {
           <Text style={styles.inputLabel}>Session label</Text>
           <TextInput
             autoCapitalize="none"
-            onChangeText={setSessionLabel}
+            onChangeText={handleSessionLabelChange}
             placeholder="pilot-1"
             placeholderTextColor={colors.secondaryText}
             style={styles.input}

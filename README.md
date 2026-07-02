@@ -27,10 +27,13 @@ a real backend yet.
   session, but resets when the JavaScript runtime reloads.
 - Seed data currently includes 16 published events dated from May 22, 2026 to
   August 9, 2026 across international mock venues, 6 event types, 7 mock users,
-  friendships, active participations, an initially empty saved-events
-  collection, and profile experience records.
+  friendships, active friend participations, an initially empty saved-events
+  collection, and profile experience records. The first three event dates are
+  past memories for the current user; the later July/August records drive the
+  Explore surfaces while their dates are still upcoming.
 - The current user profile includes a short bio/description, service-composed
-  social counters, attended memories, going events, and saved-event state.
+  social counters, attended memories, and Going/Saved sections that reflect
+  in-session join and save mutations.
 - The current user's attended profile records use dedicated memory-photo assets
   from `src/assets/experiences` and are validated against attended
   participation records within each event's actual time window.
@@ -61,9 +64,13 @@ Implemented app surfaces:
 - Shake to Discover with accelerometer detection, vibration, haptics, a styled
   discovery circle, Discovery Mode activation, and redirect to the filtered
   list.
-- Placeholder Messages, Search, Community, and Notifications screens.
-- Interaction logging stored in AsyncStorage with JSON, CSV, bundle, file, and
-  share helpers.
+- Placeholder Messages, Search, and Community screens.
+- Notifications route used as a usability-test facilitator panel rather than
+  consumer push notifications: it manages participant/session/test-plan fields,
+  starts clean sessions, starts/finishes tasks, shows live log metrics, clears
+  logs, and shares JSON bundle or CSV exports.
+- Interaction logging stored in AsyncStorage with persistent context, JSON,
+  CSV, bundle, file, and share helpers.
 
 ## Final Report Pointers
 
@@ -80,8 +87,9 @@ report:
 - Event data is normalized and then composed into UI-ready view models in
   services/domain helpers. Screens do not import mock records directly.
 - The most complete flows are Explore Map, Explore List, Event Detail,
-  Shake to Discover, and Profile. Messages, Search, Community, Notifications,
-  filtering, and share actions remain placeholders.
+  Shake to Discover, Profile, and the Interaction Logs facilitator panel.
+  Messages, Search, Community, filtering, and share actions remain
+  placeholders.
 - The profile work is one of the strongest demonstration areas: it includes a
   dynamic draggable tongue, profile bio, section-specific list/map views,
   attended experience validation, dedicated memory photos, and masked
@@ -94,11 +102,12 @@ report:
   shake detection activates a ranked set of four upcoming recommendations,
   applies a visual mode state, and filters both map and list surfaces.
 - Interaction logging is implemented as a reusable service with AsyncStorage
-  persistence and JSON/CSV/bundle export helpers, even though there is no
-  dedicated in-app log viewer yet.
+  persistence, session/task context, analytics summaries, and JSON/CSV/bundle
+  exports exposed through the in-app facilitator panel at `/map/notifications`.
 - Current limitations should be stated clearly: no backend, no authentication,
   no event publishing, no real ticketing/payments, no image uploads, no chat,
-  placeholder secondary tabs, and session-only local mutations.
+  placeholder secondary tabs, no real push-notification feed, and session-only
+  local mutations.
 - Recommended validation evidence for the report: `npm run lint`, focused
   manual smoke checks on `/map`, `/map/list`, `/event/[id]`, `/profile`, and
   `/map/shake-discover`, plus screenshots or screen recordings of the map
@@ -407,10 +416,32 @@ Discovery Mode selects four upcoming events ranked by distance from the default
 Lisbon discovery coordinate, with a small random tie-breaker. Map and list
 screens filter to that ordered set until the Discover Mode pill is dismissed.
 
+### Notifications / Interaction Logs
+
+`NotificationsScreen.js` is a native in-app facilitator panel for usability
+testing, not a real user notifications inbox.
+
+Current behavior:
+
+- screen-open events are logged through `useInteractionLogger`;
+- participant, session label, and test-plan inputs hydrate from the stored
+  interaction context when the screen opens;
+- editing those inputs persists them back to AsyncStorage so logs created after
+  leaving the screen use the selected participant/session values;
+- **Start clean session** clears existing logs and starts a new usability
+  session with the entered context;
+- task presets and free-form task IDs can be started and then finished as
+  completed or failed;
+- the current context, active task, latest task summary, route/tab counts, and
+  top clicked targets are shown from `getInteractionAnalytics()`;
+- JSON bundle and CSV exports are written with Expo FileSystem and shared with
+  Expo Sharing;
+- logs can be cleared from the panel.
+
 ### Placeholder Screens
 
-Messages, Search, Community, and Notifications currently render
-`PlaceholderScreen` and log screen-open events.
+Messages, Search, and Community currently render `PlaceholderScreen` and log
+screen-open events.
 
 ## Project Structure
 
@@ -703,9 +734,9 @@ individual screens/components log important taps such as event cards, pins,
 save buttons, participation CTAs, profile section/view selectors, profile
 experience cards, top navigation, and map recenter actions.
 
-There is currently no dedicated logs/debug screen in the route tree, so exports
-must be triggered from code, a temporary test harness, or a future facilitator
-screen.
+The `/map/notifications` facilitator panel is the supported in-app way to drive
+this flow. The exported file name uses the current participant and active task
+when available, falling back to `participant` and `all-tasks`.
 
 ## Design And UX
 
@@ -728,15 +759,16 @@ Design intent:
 
 ## Current Limitations
 
-- Messages, Search, Community, and Notifications are placeholders.
+- Messages, Search, and Community are placeholders.
 - Filter and share actions are logged placeholders.
 - There is no real backend; save, join, and cancel mutations reset on reload.
 - Event detail review copy is placeholder text, and the mini map does not yet
   expose external directions or deep-link map actions.
 - Web is not a supported validation target for the current map-heavy route
   graph.
-- There is no dedicated in-app screen for viewing or exporting interaction
-  logs, even though the service supports exports.
+- The Notifications route is a facilitator/debug surface for interaction logs;
+  it is not a real consumer notifications center and does not implement push
+  notifications.
 
 ## Development Guidelines
 
