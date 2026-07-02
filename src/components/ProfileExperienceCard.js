@@ -31,9 +31,9 @@ const EXPERIENCE_TICKET_SIDE_NOTCH_RADIUS = 10;
 
 const EXPERIENCE_TICKET_MEDIA_HEIGHT = 360;
 
-const EXPERIENCE_TICKET_SCALLOP_SIZE = 8;
-const EXPERIENCE_TICKET_SCALLOP_COUNT = 25;
-const EXPERIENCE_TICKET_SCALLOP_CENTER_OFFSET = 0;
+const EXPERIENCE_TICKET_SCALLOP_SIZE = 15;
+const EXPERIENCE_TICKET_SCALLOP_COUNT = 15;
+const EXPERIENCE_TICKET_SCALLOP_CENTER_OFFSET = -3;
 
 const EXPERIENCE_TICKET_SEPARATOR_INSET = 28;
 const EXPERIENCE_TICKET_SEPARATOR_HEIGHT = 34;
@@ -72,21 +72,19 @@ function createCirclePath(cx, cy, radius) {
   ].join(" ");
 }
 
-function createRoundedRectPath(width, height, radius) {
+function createTicketBasePath(width, height, topRadius) {
   const safeWidth = Math.max(width, 1);
   const safeHeight = Math.max(height, 1);
-  const safeRadius = Math.min(radius, safeWidth / 2, safeHeight / 2);
+  const safeTopRadius = Math.min(topRadius, safeWidth / 2, safeHeight / 2);
 
   return [
-    `M ${safeRadius} 0`,
-    `H ${safeWidth - safeRadius}`,
-    `Q ${safeWidth} 0 ${safeWidth} ${safeRadius}`,
-    `V ${safeHeight - safeRadius}`,
-    `Q ${safeWidth} ${safeHeight} ${safeWidth - safeRadius} ${safeHeight}`,
-    `H ${safeRadius}`,
-    `Q 0 ${safeHeight} 0 ${safeHeight - safeRadius}`,
-    `V ${safeRadius}`,
-    `Q 0 0 ${safeRadius} 0`,
+    `M ${safeTopRadius} 0`,
+    `H ${safeWidth - safeTopRadius}`,
+    `Q ${safeWidth} 0 ${safeWidth} ${safeTopRadius}`,
+    `V ${safeHeight}`,
+    `H 0`,
+    `V ${safeTopRadius}`,
+    `Q 0 0 ${safeTopRadius} 0`,
     "Z",
   ].join(" ");
 }
@@ -99,15 +97,15 @@ function createTicketMaskPath({
   scallopRadius,
   width,
 }) {
-  const outerPath = createRoundedRectPath(width, height, radius);
+  const outerPath = createTicketBasePath(width, height, radius);
   const sideCutouts = [
     createCirclePath(0, notchY, notchRadius),
     createCirclePath(width, notchY, notchRadius),
   ];
 
   const scallopCount = Math.max(2, EXPERIENCE_TICKET_SCALLOP_COUNT);
-  const firstScallopCenterX = scallopRadius;
-  const lastScallopCenterX = Math.max(width - scallopRadius, firstScallopCenterX);
+  const firstScallopCenterX = scallopRadius * 1.15;
+  const lastScallopCenterX = Math.max(width - scallopRadius * 1.15, firstScallopCenterX);
   const scallopPitch =
     scallopCount <= 1
       ? 0
@@ -149,46 +147,6 @@ function TicketMask({ height, notchY, width }) {
   return (
     <Svg height={height} width={width}>
       <Path d={maskPath} fill="black" fillRule="evenodd" />
-    </Svg>
-  );
-}
-
-function TicketPerimeterEffects({ height, notchY, width }) {
-  if (width <= 0 || height <= 0) return null;
-
-  const ticketPath = getTicketShapePath({ height, notchY, width });
-
-  return (
-    <Svg
-      height={height}
-      pointerEvents="none"
-      style={StyleSheet.absoluteFill}
-      width={width}
-    >
-      <Path
-        d={ticketPath}
-        fill="none"
-        fillRule="evenodd"
-        stroke="rgba(0, 0, 0, 0.26)"
-        strokeLinejoin="round"
-        strokeWidth={4.6}
-      />
-      <Path
-        d={ticketPath}
-        fill="none"
-        fillRule="evenodd"
-        stroke="rgba(255, 255, 255, 0.36)"
-        strokeLinejoin="round"
-        strokeWidth={2.4}
-      />
-      <Path
-        d={ticketPath}
-        fill="none"
-        fillRule="evenodd"
-        stroke="rgba(255, 255, 255, 0.62)"
-        strokeLinejoin="round"
-        strokeWidth={0.8}
-      />
     </Svg>
   );
 }
@@ -956,46 +914,6 @@ export default function ProfileExperienceCard({
   return (
     <View style={styles.experience}>
       <View style={styles.ticketShadow}>
-        {ticketSize.width > 0 && ticketSize.height > 0 && (
-          <>
-            <View
-              pointerEvents="none"
-              style={[styles.ticketShapeShadow, styles.ticketShapeShadowSoft]}
-            >
-              <MaskedView
-                maskElement={
-                  <TicketMask
-                    height={ticketSize.height}
-                    notchY={ticketNotchY}
-                    width={ticketSize.width}
-                  />
-                }
-                style={StyleSheet.absoluteFill}
-              >
-                <View style={styles.ticketShapeShadowFill} />
-              </MaskedView>
-            </View>
-
-            <View
-              pointerEvents="none"
-              style={[styles.ticketShapeShadow, styles.ticketShapeShadowTight]}
-            >
-              <MaskedView
-                maskElement={
-                  <TicketMask
-                    height={ticketSize.height}
-                    notchY={ticketNotchY}
-                    width={ticketSize.width}
-                  />
-                }
-                style={StyleSheet.absoluteFill}
-              >
-                <View style={styles.ticketShapeShadowFill} />
-              </MaskedView>
-            </View>
-          </>
-        )}
-
         <MaskedView
           maskElement={
             <TicketMask
@@ -1149,8 +1067,8 @@ export default function ProfileExperienceCard({
             <View pointerEvents="none" style={styles.ticketInnerHighlightFrame} />
             <LinearGradient
               colors={[
-                "rgba(255, 255, 255, 0.5)",
-                "rgba(255, 255, 255, 0.2)",
+                "rgba(255, 255, 255, 0.20)",
+                "rgba(255, 255, 255, 0.07)",
                 "rgba(255, 255, 255, 0)",
               ]}
               locations={[0, 0.22, 0.55]}
@@ -1163,13 +1081,42 @@ export default function ProfileExperienceCard({
               pointerEvents="none"
               style={styles.ticketInnerBottomShade}
             />
-            <View pointerEvents="none" style={styles.ticketPerimeterEffects}>
-              <TicketPerimeterEffects
-                height={ticketSize.height}
-                notchY={ticketNotchY}
-                width={ticketSize.width}
-              />
-            </View>
+            <LinearGradient
+              colors={[
+                "rgba(255, 255, 255, 0.22)",
+                "rgba(255, 255, 255, 0.055)",
+                "rgba(255, 255, 255, 0)",
+              ]}
+              locations={[0, 0.35, 1]}
+              pointerEvents="none"
+              style={styles.ticketTopInsetHighlight}
+            />
+            <LinearGradient
+              colors={[
+                "rgba(255, 255, 255, 0.16)",
+                "rgba(255, 255, 255, 0.045)",
+                "rgba(255, 255, 255, 0)",
+              ]}
+              end={{ x: 1, y: 0 }}
+              locations={[0, 0.42, 1]}
+              pointerEvents="none"
+              start={{ x: 0, y: 0 }}
+              style={styles.ticketLeftInsetHighlight}
+            />
+            <LinearGradient
+              colors={["rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0.16)"]}
+              end={{ x: 1, y: 0 }}
+              locations={[0, 1]}
+              pointerEvents="none"
+              start={{ x: 0, y: 0 }}
+              style={styles.ticketRightInsetShade}
+            />
+            <LinearGradient
+              colors={["rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0.20)"]}
+              locations={[0, 1]}
+              pointerEvents="none"
+              style={styles.ticketBottomInsetShade}
+            />
           </View>
         </MaskedView>
       </View>
@@ -1188,37 +1135,23 @@ export default function ProfileExperienceCard({
 
 const styles = StyleSheet.create({
   experience: {
-    paddingBottom: EXPERIENCE_TICKET_SCALLOP_SIZE,
+    marginBottom: 22,
+    position: "relative",
     width: "100%",
   },
   ticketShadow: {
     borderRadius: EXPERIENCE_TICKET_RADIUS,
-    elevation: 18,
+    elevation: 10,
     overflow: "visible",
     position: "relative",
     shadowColor: "#000000",
     shadowOffset: {
       width: 0,
-      height: 14,
+      height: 8,
     },
-    shadowOpacity: 0.34,
-    shadowRadius: 32,
-  },
-  ticketShapeShadow: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 0,
-  },
-  ticketShapeShadowSoft: {
-    opacity: 0.18,
-    transform: [{ translateY: 10 }, { scale: 1.012 }],
-  },
-  ticketShapeShadowTight: {
-    opacity: 0.24,
-    transform: [{ translateY: 4 }, { scale: 1.004 }],
-  },
-  ticketShapeShadowFill: {
-    backgroundColor: "#000000",
-    flex: 1,
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    zIndex: 1,
   },
   ticketMask: {
     position: "relative",
@@ -1292,14 +1225,15 @@ const styles = StyleSheet.create({
   },
   ticketInnerHighlightFrame: {
     ...StyleSheet.absoluteFillObject,
-    borderColor: "rgba(255, 255, 255, 0.06)",
+    borderColor: "rgba(255, 255, 255, 0.075)",
     borderRadius: EXPERIENCE_TICKET_RADIUS,
     borderWidth: StyleSheet.hairlineWidth,
     zIndex: 20,
   },
   ticketInnerTopGlow: {
-    height: 90,
+    height: 82,
     left: 0,
+    opacity: 0.72,
     position: "absolute",
     right: 0,
     top: 0,
@@ -1309,17 +1243,46 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: 110,
     left: 0,
+    opacity: 0.7,
     position: "absolute",
     right: 0,
     zIndex: 19,
   },
-  ticketPerimeterEffects: {
-    ...StyleSheet.absoluteFillObject,
+  ticketTopInsetHighlight: {
+    height: 26,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 21,
+  },
+  ticketLeftInsetHighlight: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: 18,
+    zIndex: 21,
+  },
+  ticketRightInsetShade: {
+    bottom: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    width: 18,
+    zIndex: 21,
+  },
+  ticketBottomInsetShade: {
+    bottom: 0,
+    height: 34,
+    left: 0,
+    position: "absolute",
+    right: 0,
     zIndex: 21,
   },
   ticketInfoSection: {
     backgroundColor: TICKET_DARK,
-    paddingBottom: EXPERIENCE_TICKET_INFO_PADDING + EXPERIENCE_TICKET_SCALLOP_SIZE,
+    paddingBottom: EXPERIENCE_TICKET_INFO_PADDING + 6,
     paddingHorizontal: EXPERIENCE_TICKET_INFO_PADDING,
     paddingTop: 8,
   },
