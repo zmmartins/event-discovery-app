@@ -1131,6 +1131,7 @@ export default function MapScreen() {
       const { height, width } = getViewportDimensions();
       const layout = getEventPinActionLayout({
         avoidanceInsets: pinActionAvoidanceInsets,
+        event,
         origin: safeOrigin,
         otherPinPoints: [],
         screenHeight: height,
@@ -1618,6 +1619,8 @@ export default function MapScreen() {
       }
 
       if (action === "save") {
+        if (event.canSave !== true) return;
+
         try {
           const updatedEvent = await toggleSavedEvent(event.id);
 

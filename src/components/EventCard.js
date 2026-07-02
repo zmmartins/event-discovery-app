@@ -69,7 +69,8 @@ export default function EventCard({
 }) {
   const pathname = usePathname();
   const saveScale = useRef(new Animated.Value(1)).current;
-  const [isSaved, setIsSaved] = useState(Boolean(event.isSaved));
+  const canSave = event.canSave === true;
+  const [isSaved, setIsSaved] = useState(Boolean(canSave && event.isSaved));
   const resolvedColumnWidth = Number(columnWidth);
   const safeColumnWidth =
     Number.isFinite(resolvedColumnWidth) && resolvedColumnWidth > 0
@@ -81,8 +82,8 @@ export default function EventCard({
   const title = String(event.title ?? "").toUpperCase();
 
   useEffect(() => {
-    setIsSaved(Boolean(event.isSaved));
-  }, [event.id, event.isSaved]);
+    setIsSaved(Boolean(canSave && event.isSaved));
+  }, [canSave, event.id, event.isSaved]);
 
   function animateSavePulse() {
     saveScale.setValue(0.82);
@@ -96,6 +97,8 @@ export default function EventCard({
   }
 
   async function handleSavePress() {
+    if (!canSave) return;
+
     const nextIsSaved = !isSaved;
 
     setIsSaved(nextIsSaved);
@@ -104,7 +107,7 @@ export default function EventCard({
 
     try {
       const updatedEvent = await toggleSavedEvent(event.id);
-      setIsSaved(Boolean(updatedEvent?.isSaved));
+      setIsSaved(Boolean(updatedEvent?.canSave && updatedEvent?.isSaved));
       onSavedChange?.(updatedEvent);
       logInteraction(LOG_ACTIONS.eventBookmarkToggled, {
         eventId: event.id,
@@ -145,22 +148,24 @@ export default function EventCard({
           />
         </Pressable>
 
-        <Pressable
-          accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
-          accessibilityRole="button"
-          accessibilityState={{ selected: isSaved }}
-          hitSlop={8}
-          onPress={handleSavePress}
-          style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
-        >
-          <Animated.View style={{ transform: [{ scale: saveScale }] }}>
-            <Ionicons
-              name="bookmark"
-              size={28}
-              color={isSaved ? colors.primary : "rgba(255, 255, 255, 0.7)"}
-            />
-          </Animated.View>
-        </Pressable>
+        {canSave && (
+          <Pressable
+            accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isSaved }}
+            hitSlop={8}
+            onPress={handleSavePress}
+            style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
+          >
+            <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+              <Ionicons
+                name="bookmark"
+                size={28}
+                color={isSaved ? colors.primary : "rgba(255, 255, 255, 0.7)"}
+              />
+            </Animated.View>
+          </Pressable>
+        )}
       </View>
 
       <Pressable

@@ -1120,7 +1120,7 @@ export default function EventDetailScreen() {
     async function loadEvent() {
       const selectedEvent = await getEventById(eventId);
       setEvent(selectedEvent);
-      setIsSaved(Boolean(selectedEvent?.isSaved));
+      setIsSaved(Boolean(selectedEvent?.canSave && selectedEvent?.isSaved));
     }
 
     loadEvent();
@@ -1208,7 +1208,7 @@ export default function EventDetailScreen() {
       }
 
       setEvent(updatedEvent);
-      setIsSaved(Boolean(updatedEvent?.isSaved));
+      setIsSaved(Boolean(updatedEvent?.canSave && updatedEvent?.isSaved));
 
       logInteraction(LOG_ACTIONS.participationConfirmed, {
         eventId: event.id,
@@ -1253,7 +1253,7 @@ export default function EventDetailScreen() {
       }
 
       setEvent(updatedEvent);
-      setIsSaved(Boolean(updatedEvent?.isSaved));
+      setIsSaved(Boolean(updatedEvent?.canSave && updatedEvent?.isSaved));
 
       logInteraction(LOG_ACTIONS.participationConfirmed, {
         eventId: event.id,
@@ -1278,7 +1278,7 @@ export default function EventDetailScreen() {
   }
 
   async function handleSavePress() {
-    if (!event) return;
+    if (!event?.canSave) return;
 
     const nextIsSaved = !isSaved;
 
@@ -1289,7 +1289,7 @@ export default function EventDetailScreen() {
     try {
       const updatedEvent = await toggleSavedEvent(event.id);
       setEvent(updatedEvent);
-      setIsSaved(Boolean(updatedEvent?.isSaved));
+      setIsSaved(Boolean(updatedEvent?.canSave && updatedEvent?.isSaved));
       logInteraction(LOG_ACTIONS.eventBookmarkToggled, {
         eventId: event.id,
         isSaved: Boolean(updatedEvent?.isSaved),
@@ -1316,6 +1316,7 @@ export default function EventDetailScreen() {
   const statusBarVariant = isSheetExpanded ? "lightBackground" : "image";
   const joinButtonLabel = getJoinButtonLabel(event);
   const shouldShowCancelParticipationButton = event.isJoined;
+  const canSaveEvent = event.canSave === true;
   const isJoinButtonDisabled =
     isParticipationUpdating || event.isJoined || !event.canJoin;
   const isCancelButtonDisabled = isParticipationUpdating;
@@ -1375,22 +1376,24 @@ export default function EventDetailScreen() {
             <Animated.View style={{ height: titleTopSpacer }} />
             <View style={styles.titleRow}>
               <Text style={styles.title}>{event.title}</Text>
-              <Pressable
-                accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSaved }}
-                hitSlop={8}
-                onPress={handleSavePress}
-                style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
-              >
-                <Animated.View style={{ transform: [{ scale: saveScale }] }}>
-                  <Ionicons
-                    name="bookmark"
-                    size={28}
-                    color={isSaved ? colors.primary : colors.iconMuted}
-                  />
-                </Animated.View>
-              </Pressable>
+              {canSaveEvent && (
+                <Pressable
+                  accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSaved }}
+                  hitSlop={8}
+                  onPress={handleSavePress}
+                  style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
+                >
+                  <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+                    <Ionicons
+                      name="bookmark"
+                      size={28}
+                      color={isSaved ? colors.primary : colors.iconMuted}
+                    />
+                  </Animated.View>
+                </Pressable>
+              )}
             </View>
 
             <View style={styles.tagsRow}>

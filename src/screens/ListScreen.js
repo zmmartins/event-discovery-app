@@ -411,6 +411,8 @@ export default function ListScreen() {
       }
 
       if (actionId === "save") {
+        if (event.canSave !== true) return;
+
         try {
           const updatedEvent = await toggleSavedEvent(event.id);
 
@@ -459,6 +461,7 @@ export default function ListScreen() {
 
       const layout = getEventPinActionLayout({
         avoidanceInsets: cardActionAvoidanceInsets,
+        event,
         origin,
         otherPinPoints: [],
         screenHeight,

@@ -18,7 +18,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import EventCard from "../components/EventCard";
-import { getEventPinMarkerAnchor } from "../components/EventPin";
+import EventPin, { getEventPinMarkerAnchor } from "../components/EventPin";
 import ExperiencePin from "../components/ExperiencePin";
 import ProfileExperienceCard from "../components/ProfileExperienceCard";
 import useInteractionLogger from "../hooks/useInteractionLogger";
@@ -251,7 +251,7 @@ function MasonryEventList({
   );
 }
 
-function AttendedMapView({ onPinPress, pins, profileRegion }) {
+function ProfileEventMapView({ onPinPress, pins, profileRegion }) {
   return (
     <View style={styles.mapPanel}>
       <MapView
@@ -281,19 +281,14 @@ function AttendedMapView({ onPinPress, pins, profileRegion }) {
             key={pin.id}
             onPress={(markerEvent) => onPinPress(markerEvent, pin)}
           >
-            <ExperiencePin event={pin.event} photoRef={pin.photoRef} />
+            {pin.photoRef ? (
+              <ExperiencePin event={pin.event} photoRef={pin.photoRef} />
+            ) : (
+              <EventPin event={pin.event} />
+            )}
           </Marker>
         ))}
       </MapView>
-    </View>
-  );
-}
-
-function ProfileMapPlaceholder({ title }) {
-  return (
-    <View style={styles.mapPlaceholder}>
-      <Ionicons name="map" size={28} color={colors.iconMuted} />
-      <Text style={styles.mapPlaceholderText}>{title}</Text>
     </View>
   );
 }
@@ -422,10 +417,10 @@ export default function ProfileScreen() {
   );
 
   const profileRegion = useMemo(() => {
-    const attendedPins = profile?.sections?.attended?.mapPins ?? profile?.mapPins;
+    const sectionPins = profile?.sections?.[activeSection]?.mapPins ?? [];
 
-    return getProfileRegion(attendedPins);
-  }, [profile?.mapPins, profile?.sections?.attended?.mapPins]);
+    return getProfileRegion(sectionPins);
+  }, [activeSection, profile?.sections]);
 
   useEffect(() => {
     const listenerId = sheetY.addListener(({ value }) => {
@@ -634,7 +629,7 @@ export default function ProfileScreen() {
         }
 
         return (
-          <AttendedMapView
+          <ProfileEventMapView
             onPinPress={handlePinPress}
             pins={pins}
             profileRegion={profileRegion}
@@ -660,7 +655,6 @@ export default function ProfileScreen() {
               key={experience.id}
               onOpen={() => openEvent(experience.event.id)}
               onPhotoRailGestureActiveChange={handlePhotoRailGestureActiveChange}
-              onSavedChange={refreshProfile}
               screen="ProfileScreen"
               source="profile_attended_list"
             />
@@ -671,9 +665,25 @@ export default function ProfileScreen() {
 
     if (activeSection === "going") {
       const goingEvents = goingSection?.events ?? profile.goingEvents ?? [];
+      const pins = goingSection?.mapPins ?? [];
 
       if (activeView === "map") {
-        return <ProfileMapPlaceholder title="Going map coming soon" />;
+        if (pins.length === 0) {
+          return (
+            <ProfileEmptyState
+              title="No upcoming events yet."
+              body="Events you are attending will appear on this map."
+            />
+          );
+        }
+
+        return (
+          <ProfileEventMapView
+            onPinPress={handlePinPress}
+            pins={pins}
+            profileRegion={profileRegion}
+          />
+        );
       }
 
       if (goingEvents.length === 0) {
@@ -697,9 +707,25 @@ export default function ProfileScreen() {
     }
 
     const savedEvents = savedSection?.events ?? profile.savedEvents ?? [];
+    const pins = savedSection?.mapPins ?? [];
 
     if (activeView === "map") {
-      return <ProfileMapPlaceholder title="Saved map coming soon" />;
+      if (pins.length === 0) {
+        return (
+          <ProfileEmptyState
+            title="No saved upcoming events yet."
+            body="Saved events will appear on this map."
+          />
+        );
+      }
+
+      return (
+        <ProfileEventMapView
+          onPinPress={handlePinPress}
+          pins={pins}
+          profileRegion={profileRegion}
+        />
+      );
     }
 
     if (savedEvents.length === 0) {
@@ -1020,25 +1046,6 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
-  },
-  mapPlaceholder: {
-    alignItems: "center",
-    backgroundColor: colors.effects.surfaceOverlay,
-    borderColor: colors.effects.surfaceStrongBorder,
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: 10,
-    justifyContent: "center",
-    marginTop: 18,
-    minHeight: 220,
-    padding: 24,
-  },
-  mapPlaceholderText: {
-    color: colors.secondaryText,
-    fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 0,
-    textAlign: "center",
   },
   emptyState: {
     backgroundColor: colors.effects.surfaceOverlay,

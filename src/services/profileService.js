@@ -1,11 +1,14 @@
 import {
   clonePhotoRefs,
+  createEventMapPin,
   createProfileMapPin,
   createProfileStats,
+  filterValidExperienceRecords,
   orderUserExperienceRecords,
 } from "../domain/profile/profileAggregates";
+import { listEventParticipationRecords } from "../repositories/eventRepository";
 import { listUserExperienceRecords } from "../repositories/profileRepository";
-import { getEventById, getEvents } from "./eventService";
+import { getEvents } from "./eventService";
 import { getCurrentUser, getFriendships } from "./userService";
 
 function isFutureVisibleEvent(event) {
@@ -17,17 +20,24 @@ function isGoingEvent(event) {
 }
 
 function isSavedProfileEvent(event) {
-  return Boolean(event?.isSaved) && isFutureVisibleEvent(event);
+  return Boolean(event?.isSaved) && event?.canSave === true;
 }
 
 export async function getProfileExperiences() {
   const currentUser = await getCurrentUser();
-  const experienceRecords = orderUserExperienceRecords(
-    await listUserExperienceRecords(currentUser.id)
-  );
-  const experiences = await Promise.all(
-    experienceRecords.map(async (experience) => {
-      const event = await getEventById(experience.eventId);
+  const [events, participations, rawExperienceRecords] = await Promise.all([
+    getEvents(),
+    listEventParticipationRecords(),
+    listUserExperienceRecords(currentUser.id),
+  ]);
+  const eventsById = new Map(events.map((event) => [event.id, event]));
+  const validExperienceRecords = filterValidExperienceRecords(rawExperienceRecords, {
+    events,
+    participations,
+  });
+  const experiences = validExperienceRecords
+    .map((experience) => {
+      const event = eventsById.get(experience.eventId);
 
       if (!event) return null;
 
@@ -37,9 +47,9 @@ export async function getProfileExperiences() {
         photoRefs: clonePhotoRefs(experience.photoRefs),
       };
     })
-  );
+    .filter(Boolean);
 
-  return experiences.filter(Boolean);
+  return orderUserExperienceRecords(experiences);
 }
 
 export async function getProfileMapPins() {
@@ -62,6 +72,8 @@ export async function getCurrentUserProfile() {
   const goingEvents = events.filter(isGoingEvent);
   const savedEvents = events.filter(isSavedProfileEvent);
   const attendedMapPins = experiences.map(createProfileMapPin);
+  const goingMapPins = goingEvents.map((event) => createEventMapPin(event, "going"));
+  const savedMapPins = savedEvents.map((event) => createEventMapPin(event, "saved"));
 
   return {
     avatarKey: currentUser.avatarKey,
@@ -90,14 +102,14 @@ export async function getCurrentUserProfile() {
         events: goingEvents,
         id: "going",
         label: "Going",
-        mapPins: [],
+        mapPins: goingMapPins,
       },
       saved: {
         count: savedEvents.length,
         events: savedEvents,
         id: "saved",
         label: "Saved",
-        mapPins: [],
+        mapPins: savedMapPins,
       },
     },
   };

@@ -54,6 +54,21 @@ const PIN_ACTIONS = [
   },
 ];
 
+function getEventPinActions(event) {
+  if (event?.canSave !== true) {
+    return PIN_ACTIONS.filter((action) => action.id !== "save");
+  }
+
+  return PIN_ACTIONS;
+}
+
+function getActionAngleOffsets(actionCount) {
+  if (actionCount <= 1) return [0];
+  if (actionCount === 2) return [-FAN_ANGLE_OFFSET / 2, FAN_ANGLE_OFFSET / 2];
+
+  return [-FAN_ANGLE_OFFSET, 0, FAN_ANGLE_OFFSET];
+}
+
 function getLiquidGlassAvailable() {
   if (Platform.OS !== "ios") return false;
 
@@ -170,6 +185,7 @@ function getCandidateScore(
 
 export function getEventPinActionLayout({
   avoidanceInsets = {},
+  event,
   origin,
   otherPinPoints = [],
   screenHeight,
@@ -180,9 +196,11 @@ export function getEventPinActionLayout({
   const safeScreenWidth = Math.max(screenWidth ?? 1, 1);
   const safeAvoidanceInsets = normalizeAvoidanceInsets(avoidanceInsets);
   const safeOtherPinPoints = Array.isArray(otherPinPoints) ? otherPinPoints : [];
+  const actionsConfig = getEventPinActions(event);
+  const angleOffsets = getActionAngleOffsets(actionsConfig.length);
 
   const bestCandidate = CANDIDATE_BASE_ANGLES.map((baseAngle) => {
-    const centers = [-FAN_ANGLE_OFFSET, 0, FAN_ANGLE_OFFSET].map((offset) =>
+    const centers = angleOffsets.map((offset) =>
       getPointFromAngle(safeOrigin, baseAngle + offset, PIN_ACTION_RADIUS)
     );
 
@@ -206,7 +224,7 @@ export function getEventPinActionLayout({
     return firstCandidate.baseAngle - secondCandidate.baseAngle;
   })[0];
 
-  const actions = PIN_ACTIONS.map((action, index) => ({
+  const actions = actionsConfig.map((action, index) => ({
     ...action,
     center: bestCandidate.centers[index],
   }));
@@ -285,12 +303,13 @@ export default function EventPinActionMenu({
     () =>
       getEventPinActionLayout({
         avoidanceInsets,
+        event,
         origin,
         otherPinPoints,
         screenHeight,
         screenWidth,
       }),
-    [avoidanceInsets, origin, otherPinPoints, screenHeight, screenWidth]
+    [avoidanceInsets, event, origin, otherPinPoints, screenHeight, screenWidth]
   );
 
   useEffect(() => {

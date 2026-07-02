@@ -5,10 +5,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { usePathname } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Animated,
   Image,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -17,13 +17,18 @@ import {
 import Svg, { Path } from "react-native-svg";
 
 import { formatAttendedExperienceDate } from "../domain/events/eventFormatters";
-import { toggleSavedEvent } from "../services/eventService";
 import { LOG_ACTIONS, logInteraction } from "../services/interactionLogService";
 import { colors } from "../theme/colors";
 import { getAvatarImage, getEventPreviewImage } from "../utils/imageAssets";
 
 const TICKET_DARK = "#121A15";
 const TICKET_DARK_SOFT = "#18241D";
+
+const POSTER_TEXT_FONT = Platform.select({
+  android: "monospace",
+  default: "monospace",
+  ios: "Menlo",
+});
 
 const EXPERIENCE_TICKET_RADIUS = 12;
 
@@ -779,27 +784,27 @@ export default function ProfileExperienceCard({
   experience,
   onOpen,
   onPhotoRailGestureActiveChange,
-  onSavedChange,
   screen = "ProfileScreen",
   source = "profile_attended_list",
 }) {
   const pathname = usePathname();
-  const saveScale = useRef(new Animated.Value(1)).current;
-  const [isSaved, setIsSaved] = useState(Boolean(event.isSaved));
   const [mediaMode, setMediaMode] = useState("grid");
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [isExpandedImageVisible, setIsExpandedImageVisible] = useState(false);
   const [ticketSize, setTicketSize] = useState({ height: 0, width: 0 });
   const price = event.price?.toUpperCase?.() ?? "";
+  const organizerName =
+    event.organizerName ??
+    event.organizer?.name ??
+    event.organizer?.displayName ??
+    event.locationShortName ??
+    event.locationName ??
+    "";
   const photoRefs = useMemo(
     () => getSafePhotoRefs(experience.photoRefs),
     [experience.photoRefs]
   );
   const hasMultiplePhotos = photoRefs.length > 1;
-
-  useEffect(() => {
-    setIsSaved(Boolean(event.isSaved));
-  }, [event.id, event.isSaved]);
 
   useEffect(() => {
     setActivePhotoIndex(0);
@@ -812,41 +817,6 @@ export default function ProfileExperienceCard({
       getClampedPhotoIndex(currentIndex, photoRefs.length)
     );
   }, [photoRefs.length]);
-
-  function animateSavePulse() {
-    saveScale.setValue(0.82);
-    Animated.spring(saveScale, {
-      damping: 8,
-      mass: 0.45,
-      stiffness: 320,
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
-  }
-
-  async function handleSavePress() {
-    const nextIsSaved = !isSaved;
-
-    setIsSaved(nextIsSaved);
-    animateSavePulse();
-    Haptics.selectionAsync().catch(() => null);
-
-    try {
-      const updatedEvent = await toggleSavedEvent(event.id);
-      setIsSaved(Boolean(updatedEvent?.isSaved));
-      onSavedChange?.(updatedEvent);
-      logInteraction(LOG_ACTIONS.eventBookmarkToggled, {
-        eventId: event.id,
-        experienceId: experience.id,
-        isSaved: Boolean(updatedEvent?.isSaved),
-        route: pathname,
-        screen,
-        source,
-      }).catch(() => null);
-    } catch {
-      setIsSaved(!nextIsSaved);
-    }
-  }
 
   function handleOpenPress() {
     logInteraction(LOG_ACTIONS.profileExperienceOpened, {
@@ -954,23 +924,32 @@ export default function ProfileExperienceCard({
               <LinearGradient
                 colors={[
                   "rgba(18, 26, 21, 0)",
-                  "rgba(18, 26, 21, 0.06)",
-                  "rgba(18, 26, 21, 0.30)",
+                  "rgba(18, 26, 21, 0)",
+                  "rgba(18, 26, 21, 0.26)",
+                  "rgba(18, 26, 21, 0.72)",
                   TICKET_DARK,
                 ]}
-                locations={[0, 0.6, 0.75, 1]}
+                locations={[0, 0.48, 0.6, 0.8, 1]}
                 pointerEvents="none"
                 style={styles.ticketHeroGradient}
               />
 
-              <View pointerEvents="none" style={styles.ticketHeroTopMeta}>
-                <Text style={styles.ticketHeroLabel}>MEMORY TICKET</Text>
-              </View>
-
               <View pointerEvents="none" style={styles.ticketHeroCopy}>
+                <Text style={styles.ticketHeroLabel}>MEMORY TICKET</Text>
+
                 <Text numberOfLines={3} style={styles.ticketHeroTitle}>
                   {event.title}
                 </Text>
+
+                <View style={styles.ticketHeroMetaRow}>
+                  <AttendeeStack attendees={event.attendingFriends} />
+
+                  {!!organizerName && (
+                    <Text numberOfLines={1} style={styles.ticketOrganizerName}>
+                      {organizerName}
+                    </Text>
+                  )}
+                </View>
               </View>
 
               {hasMultiplePhotos && (
@@ -1010,57 +989,35 @@ export default function ProfileExperienceCard({
                 pressed && styles.cardPressed,
               ]}
             >
-              <View style={styles.ticketInfoTopRow}>
-                <Text style={styles.date}>
-                  {formatAttendedExperienceDate(experience.attendedAt)}
-                </Text>
+              <View style={styles.ticketInfoContent}>
+                <View style={styles.ticketInfoTextColumn}>
+                  <Text style={styles.date}>
+                    {formatAttendedExperienceDate(experience.attendedAt)}
+                  </Text>
 
-                <Pressable
-                  accessibilityLabel={isSaved ? "Remove saved event" : "Save event"}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSaved }}
-                  hitSlop={8}
-                  onPress={(pressEvent) => {
-                    pressEvent?.stopPropagation?.();
-                    handleSavePress();
-                  }}
-                  style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
-                >
-                  <Animated.View style={{ transform: [{ scale: saveScale }] }}>
-                    <Ionicons
-                      name="bookmark"
-                      size={21}
-                      color={isSaved ? colors.primary : colors.surface}
-                    />
-                  </Animated.View>
-                </Pressable>
-              </View>
+                  {!!price && <Text style={styles.price}>{price}</Text>}
 
-              <Text numberOfLines={2} style={styles.address}>
-                {event.locationName}
-              </Text>
-
-              <View style={styles.footerRow}>
-                <View style={styles.ticketMetaBlock}>
-                  <Text style={styles.price}>{price}</Text>
-                  <AttendeeStack attendees={event.attendingFriends} />
+                  <Text numberOfLines={2} style={styles.address}>
+                    {event.locationName}
+                  </Text>
                 </View>
 
-                <Pressable
-                  accessibilityLabel={`Open details for ${event.title}`}
-                  accessibilityRole="button"
-                  onPress={(pressEvent) => {
-                    pressEvent?.stopPropagation?.();
-                    handleOpenPress();
-                  }}
-                  style={({ pressed }) => [
-                    styles.detailsButton,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.detailsButtonText}>CHECK US</Text>
-                  <Text style={styles.detailsButtonText}>OUT</Text>
-                </Pressable>
+                <View style={styles.ticketActionColumn}>
+                  <Pressable
+                    accessibilityLabel={`Open details for ${event.title}`}
+                    accessibilityRole="button"
+                    onPress={(pressEvent) => {
+                      pressEvent?.stopPropagation?.();
+                      handleOpenPress();
+                    }}
+                    style={({ pressed }) => [
+                      styles.posterArrowButton,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons name="arrow-forward" size={34} color={TICKET_DARK} />
+                  </Pressable>
+                </View>
               </View>
             </Pressable>
 
@@ -1184,31 +1141,40 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   ticketHeroCopy: {
-    bottom: 54,
+    bottom: 26,
     left: 18,
     position: "absolute",
     right: 18,
     zIndex: 4,
   },
-  ticketHeroTopMeta: {
-    left: 18,
-    position: "absolute",
-    right: 120,
-    top: 16,
-    zIndex: 4,
-  },
   ticketHeroLabel: {
     color: "rgba(255, 255, 255, 0.78)",
+    fontFamily: POSTER_TEXT_FONT,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0,
+    marginBottom: 4,
   },
   ticketHeroTitle: {
-    color: colors.surface,
+    color: colors.primary,
     fontSize: 31,
     fontWeight: "900",
     letterSpacing: 0,
     lineHeight: 33,
+  },
+  ticketHeroMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+    maxWidth: "92%",
+  },
+  ticketOrganizerName: {
+    color: "rgba(255, 255, 255, 0.88)",
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0,
   },
   ticketSeparatorRow: {
     backgroundColor: TICKET_DARK,
@@ -1282,19 +1248,25 @@ const styles = StyleSheet.create({
   },
   ticketInfoSection: {
     backgroundColor: TICKET_DARK,
-    paddingBottom: EXPERIENCE_TICKET_INFO_PADDING + 6,
+    paddingBottom: EXPERIENCE_TICKET_INFO_PADDING + 20,
     paddingHorizontal: EXPERIENCE_TICKET_INFO_PADDING,
-    paddingTop: 8,
+    paddingTop: 12,
   },
-  ticketInfoTopRow: {
-    alignItems: "center",
+  ticketInfoContent: {
+    alignItems: "flex-end",
     flexDirection: "row",
-    gap: 12,
+    gap: 16,
     justifyContent: "space-between",
   },
-  ticketMetaBlock: {
+  ticketInfoTextColumn: {
     flex: 1,
     minWidth: 0,
+    paddingRight: 4,
+  },
+  ticketActionColumn: {
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingBottom: 1,
   },
   photoGrid: {
     backgroundColor: TICKET_DARK,
@@ -1435,41 +1407,29 @@ const styles = StyleSheet.create({
   },
   date: {
     color: colors.primary,
-    flex: 1,
-    fontSize: 12,
+    fontFamily: POSTER_TEXT_FONT,
+    fontSize: 13,
     fontWeight: "900",
     letterSpacing: 0,
-    lineHeight: 15,
-  },
-  saveButton: {
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    borderColor: "rgba(255, 255, 255, 0.14)",
-    borderRadius: 15,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 32,
-    justifyContent: "center",
-    width: 32,
+    lineHeight: 16,
+    marginBottom: 8,
   },
   address: {
     color: "rgba(255, 255, 255, 0.78)",
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 8,
-  },
-  footerRow: {
-    alignItems: "flex-end",
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "space-between",
-    marginTop: 14,
+    fontFamily: POSTER_TEXT_FONT,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0,
+    lineHeight: 17,
   },
   price: {
     color: colors.primary,
-    fontSize: 11,
+    fontFamily: POSTER_TEXT_FONT,
+    fontSize: 13,
     fontWeight: "900",
     letterSpacing: 0,
-    marginBottom: 5,
+    lineHeight: 16,
+    marginBottom: 7,
   },
   avatarStack: {
     alignItems: "center",
@@ -1501,21 +1461,20 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 20,
   },
-  detailsButton: {
-    alignItems: "flex-start",
+  posterArrowButton: {
+    alignItems: "center",
     backgroundColor: colors.primary,
-    borderRadius: 10,
+    borderRadius: 31,
+    height: 62,
     justifyContent: "center",
-    minHeight: 40,
-    minWidth: 76,
-    paddingHorizontal: 10,
-  },
-  detailsButtonText: {
-    color: colors.iconActive,
-    fontSize: 8,
-    fontWeight: "900",
-    letterSpacing: 0,
-    lineHeight: 10,
+    shadowColor: "#000000",
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    width: 62,
   },
   pressed: {
     opacity: 0.72,

@@ -20,6 +20,11 @@ export const PARTICIPATION_STATUS = {
   noShow: "no_show",
 };
 
+const ACTIVE_PARTICIPATION_AVAILABILITIES = new Set([
+  EVENT_AVAILABILITY.available,
+  EVENT_AVAILABILITY.soldOut,
+]);
+
 export function isActiveParticipation(participation) {
   return participation?.status === PARTICIPATION_STATUS.registered;
 }
@@ -70,6 +75,24 @@ export function getEventAvailability(event, participations = [], now = new Date(
   return EVENT_AVAILABILITY.available;
 }
 
+function getValidTime(value) {
+  const time = new Date(value).getTime();
+
+  return Number.isNaN(time) ? null : time;
+}
+
+export function isTimestampWithinEventWindow(value, event) {
+  const time = getValidTime(value);
+  const startsAtTime = getValidTime(event?.startsAt);
+  const endsAtTime = getValidTime(event?.endsAt);
+
+  if (time === null || startsAtTime === null || endsAtTime === null) {
+    return false;
+  }
+
+  return time >= startsAtTime && time <= endsAtTime;
+}
+
 export function canUserJoinEvent({
   event,
   now = new Date(),
@@ -86,6 +109,17 @@ export function canUserJoinEvent({
   );
 
   return availability === EVENT_AVAILABILITY.available && !existingParticipation;
+}
+
+export function canUserSaveEvent({ event, now = new Date(), participations = [] } = {}) {
+  if (!event || event.status !== EVENT_STATUS.published) return false;
+
+  const availability = getEventAvailability(event, participations, now);
+
+  return (
+    availability === EVENT_AVAILABILITY.available ||
+    availability === EVENT_AVAILABILITY.soldOut
+  );
 }
 
 export function getEventDatePartsFromStartsAt(startsAt) {
@@ -184,24 +218,30 @@ function getFriendsGoing({ activeParticipations, friendUserIds, usersById }) {
 }
 
 function getFriendsWentBefore({
-  eventId,
+  event,
   experiences,
   friendUserIds,
   participations,
   usersById,
 }) {
+  const eventId = event?.id;
   const attendedParticipantIds = new Set(
     participations
       .filter(
         (participation) =>
           participation.eventId === eventId &&
-          participation.status === PARTICIPATION_STATUS.attended
+          participation.status === PARTICIPATION_STATUS.attended &&
+          isTimestampWithinEventWindow(participation.attendedAt, event)
       )
       .map((participation) => participation.userId)
   );
   const experienceUserIds = new Set(
     experiences
-      .filter((experience) => experience.eventId === eventId)
+      .filter(
+        (experience) =>
+          experience.eventId === eventId &&
+          isTimestampWithinEventWindow(experience.attendedAt, event)
+      )
       .map((experience) => experience.userId)
   );
 
@@ -239,20 +279,27 @@ export function createEventViewModel({
   const eventImageKeys = eventImages.map((image) => image.imageKey).filter(Boolean);
   const thumbnailKey = eventImageKeys[0] ?? fallbackThumbnailKey;
   const imageKeys = eventImageKeys.length > 0 ? eventImageKeys : [thumbnailKey];
-  const activeParticipations = getActiveParticipationsForEvent(
-    participations,
-    event.id
-  );
   const currentUserId = currentUser?.id;
   const friendUserIds = getAcceptedFriendUserIds(currentUser, friendships);
   const { date, time } = getEventDatePartsFromStartsAt(event.startsAt);
   const availability = getEventAvailability(event, participations, now);
+  const activeParticipations = ACTIVE_PARTICIPATION_AVAILABILITIES.has(availability)
+    ? getActiveParticipationsForEvent(participations, event.id)
+    : [];
+  const canSave = canUserSaveEvent({
+    event,
+    now,
+    participations,
+  });
   const isJoined = Boolean(
     currentUserId &&
-      getUserActiveParticipation(participations, event.id, currentUserId)
+      activeParticipations.some(
+        (participation) => participation.userId === currentUserId
+      )
   );
   const isSaved = Boolean(
-    currentUserId &&
+    canSave &&
+      currentUserId &&
       savedEvents.some(
         (savedEvent) =>
           savedEvent.userId === currentUserId && savedEvent.eventId === event.id
@@ -265,6 +312,7 @@ export function createEventViewModel({
       .map((participation) => createAttendee(usersById.get(participation.userId)))
       .filter(Boolean),
     availability,
+    canSave,
     canJoin: canUserJoinEvent({
       event,
       now,
@@ -280,7 +328,7 @@ export function createEventViewModel({
       usersById,
     }),
     friendsWentBefore: getFriendsWentBefore({
-      eventId: event.id,
+      event,
       experiences,
       friendUserIds,
       participations,

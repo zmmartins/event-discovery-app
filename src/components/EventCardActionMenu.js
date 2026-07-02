@@ -98,12 +98,13 @@ export default function EventCardActionMenu({
     () =>
       getEventPinActionLayout({
         avoidanceInsets,
+        event,
         origin,
         otherPinPoints: [],
         screenHeight,
         screenWidth,
       }),
-    [avoidanceInsets, origin, screenHeight, screenWidth]
+    [avoidanceInsets, event, origin, screenHeight, screenWidth]
   );
 
   useEffect(() => {

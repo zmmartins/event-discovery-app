@@ -5,10 +5,12 @@ import {
   EVENT_AVAILABILITY,
   EVENT_STATUS,
   PARTICIPATION_STATUS,
+  canUserSaveEvent,
   createEventViewModel,
   getEventAvailability,
   getUserActiveParticipation,
 } from "../domain/events/eventState";
+import { filterValidExperienceRecords } from "../domain/profile/profileAggregates";
 import { listExperienceRecords } from "../repositories/profileRepository";
 import {
   createEventParticipationRecord,
@@ -72,7 +74,7 @@ function filterUpcomingEventRecords(events = [], participations = [], now = new 
     .sort(compareEventsByStartTime);
 }
 
-async function getEventCompositionData() {
+async function getEventCompositionData(now = new Date()) {
   const currentUser = await getCurrentUserRecord();
   const [
     users,
@@ -98,12 +100,18 @@ async function getEventCompositionData() {
     listExperienceRecords(),
   ]);
 
+  const validExperiences = filterValidExperienceRecords(experiences, {
+    events,
+    now,
+    participations,
+  });
+
   return {
     currentUser,
     events,
     eventTypes,
     eventTypesById: createRecordMap(eventTypes),
-    experiences,
+    experiences: validExperiences,
     friendships,
     images,
     locations,
@@ -134,15 +142,15 @@ function createEventViewModelFromRecord(event, data, now = new Date()) {
 }
 
 export async function getEvents() {
-  const data = await getEventCompositionData();
   const now = new Date();
+  const data = await getEventCompositionData(now);
 
   return data.events.map((event) => createEventViewModelFromRecord(event, data, now));
 }
 
 export async function getUpcomingEvents() {
-  const data = await getEventCompositionData();
   const now = new Date();
+  const data = await getEventCompositionData(now);
   const upcomingEvents = filterUpcomingEventRecords(
     data.events,
     data.participations,
@@ -155,10 +163,11 @@ export async function getUpcomingEvents() {
 }
 
 export async function getEventById(id) {
-  const data = await getEventCompositionData();
+  const now = new Date();
+  const data = await getEventCompositionData(now);
   const event = data.events.find((nextEvent) => nextEvent.id === id);
 
-  return event ? createEventViewModelFromRecord(event, data) : null;
+  return event ? createEventViewModelFromRecord(event, data, now) : null;
 }
 
 export async function getEventsByCategory(category) {
@@ -242,10 +251,11 @@ export async function cancelEventParticipation(id) {
 }
 
 export async function toggleSavedEvent(id) {
-  const [currentUser, eventRecord, savedEvents] = await Promise.all([
+  const [currentUser, eventRecord, savedEvents, participations] = await Promise.all([
     getCurrentUserRecord(),
     getEventRecord(id),
     listUserSavedEventRecords(),
+    listEventParticipationRecords(),
   ]);
 
   if (!currentUser || !eventRecord) {
@@ -258,7 +268,7 @@ export async function toggleSavedEvent(id) {
 
   if (existingSave) {
     await deleteUserSavedEventRecord(currentUser.id, id);
-  } else {
+  } else if (canUserSaveEvent({ event: eventRecord, participations })) {
     await createUserSavedEventRecord({
       eventId: id,
       id: `saved-${currentUser.id}-${id}-${Date.now()}`,
