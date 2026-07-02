@@ -29,6 +29,8 @@ a real backend yet.
   August 9, 2026 across international mock venues, 6 event types, 7 mock users,
   friendships, active participations, an initially empty saved-events
   collection, and profile experience records.
+- The current user profile includes a short bio/description, service-composed
+  social counters, attended memories, going events, and saved-event state.
 - The current user's attended profile records use dedicated memory-photo assets
   from `src/assets/experiences` and are validated against attended
   participation records within each event's actual time window.
@@ -51,16 +53,57 @@ Implemented app surfaces:
 - Event detail screen with generated detail media, a draggable sheet,
   interactive mini map, social context, save, join, and cancel-attendance
   controls, haptics, and logging.
-- Profile screen with Attended, Going, and Saved sections, section-specific
-  list/map selectors, attended memory-ticket cards, section-specific map pins,
-  future/saved event feeds, and empty states when a section has no matching
-  data.
+- Profile screen with a draggable blurred profile tongue, a stacked name and
+  compact stats summary, profile bio, Attended/Going/Saved sections,
+  section-specific list/map selectors, attended memory-ticket cards,
+  section-specific map pins, future/saved event feeds, and empty states when a
+  section has no matching data.
 - Shake to Discover with accelerometer detection, vibration, haptics, a styled
   discovery circle, Discovery Mode activation, and redirect to the filtered
   list.
 - Placeholder Messages, Search, Community, and Notifications screens.
 - Interaction logging stored in AsyncStorage with JSON, CSV, bundle, file, and
   share helpers.
+
+## Final Report Pointers
+
+These are the most relevant implementation points to reference in the final
+report:
+
+- The project is intentionally native-first: iOS/Android validation matters more
+  than web because the core experience depends on `react-native-maps`, native
+  gestures, location, haptics, sensors, and native tab surfaces.
+- The source structure separates route files, screen implementations,
+  reusable components, services, repositories, local mock repositories, domain
+  helpers, and asset lookup utilities. This is useful to explain as a prototype
+  architecture that can later swap local repositories for API-backed data.
+- Event data is normalized and then composed into UI-ready view models in
+  services/domain helpers. Screens do not import mock records directly.
+- The most complete flows are Explore Map, Explore List, Event Detail,
+  Shake to Discover, and Profile. Messages, Search, Community, Notifications,
+  filtering, and share actions remain placeholders.
+- The profile work is one of the strongest demonstration areas: it includes a
+  dynamic draggable tongue, profile bio, section-specific list/map views,
+  attended experience validation, dedicated memory photos, and masked
+  memory-ticket cards.
+- `ProfileExperienceCard` is a notable technical highlight. It combines an SVG
+  ticket mask, notches/perforations, `Animated` hero-height changes, shared
+  grid/full-image-to-expanded transitions, dash-rail photo selection, haptics,
+  and interaction logging.
+- The Discover Mode flow is another report-worthy interaction: accelerometer
+  shake detection activates a ranked set of four upcoming recommendations,
+  applies a visual mode state, and filters both map and list surfaces.
+- Interaction logging is implemented as a reusable service with AsyncStorage
+  persistence and JSON/CSV/bundle export helpers, even though there is no
+  dedicated in-app log viewer yet.
+- Current limitations should be stated clearly: no backend, no authentication,
+  no event publishing, no real ticketing/payments, no image uploads, no chat,
+  placeholder secondary tabs, and session-only local mutations.
+- Recommended validation evidence for the report: `npm run lint`, focused
+  manual smoke checks on `/map`, `/map/list`, `/event/[id]`, `/profile`, and
+  `/map/shake-discover`, plus screenshots or screen recordings of the map
+  preview morph, event detail sheet, profile tongue, memory-ticket expansion,
+  and shake-to-discover flow.
 
 ## Tech Stack
 
@@ -324,7 +367,8 @@ review-card copy.
 Current behavior:
 
 - full-screen avatar/hero background with a draggable blurred profile sheet;
-- floating liquid-glass username pill, stacked display name, and derived stats;
+- floating liquid-glass username pill and a measured profile summary with a
+  stacked display name, compact right-side stats, and current-user bio;
 - Attended, Going, and Saved sections with counts;
 - per-section list/map selector;
 - Attended list cards from explicit profile experience records;
@@ -332,8 +376,11 @@ Current behavior:
   SVG-clipped side notches and bottom perforations, image-to-dark lighting,
   a glossy arrow detail control, and haptic/logged interactions;
 - attended memory media supports mosaic grid mode, full-image mode, vertical
-  dash rail selection, and smooth inline ticket image expansion based on the
-  selected image aspect ratio;
+  dash rail selection, and shared-image-style expansion from the selected grid
+  tile or full image into an aspect-ratio-aware expanded ticket image;
+- expanding and collapsing a memory image animates the ticket hero height,
+  separator/notch position, source-image visibility, transition overlay, and
+  bottom identity section with React Native `Animated`;
 - Attended map uses `ExperiencePin` and random memory photos from each
   experience;
 - Going and Saved list views render two-column `EventCard` feeds when records
@@ -495,7 +542,7 @@ Data flow:
   `mockEventImages`, `mockEventParticipations`, and `mockUserSavedEvents`.
 - `src/data/mockUsers.js` contains user-domain source records:
   `mockUsers`, `mockFriendships`, and `mockUserEventExperiences`, including
-  profile memory photo refs.
+  the current user's profile description and profile memory photo refs.
 - `src/data/local/*Repository.js` contains local in-memory repository
   implementations and is the only app layer that should import mock records
   directly.
@@ -545,7 +592,8 @@ user's active participation to `canceled`.
 
 `profileService.js` composes profile experiences from normalized user event
 experience records, event view models, friendship records, participation
-records, and the full event list. Profile sections are derived as:
+records, the current user's description, and the full event list. Profile
+sections are derived as:
 
 - `attended`: explicit user event experience records that match an existing
   past event, an attended participation for the same user/event, and attended
